@@ -1,0 +1,74 @@
+imports:
+    - { resource: 'proxies.yml', ignore_errors: true }
+
+parameters:
+    app.name: autoplicity-parser
+    app.version: 0.01
+    
+    app.autoplicity.host: http://autoplicity.com/
+    app.memory_limit: 256M
+    
+    app.var.dir: %ROOT_PATH%/var
+    app.tmp.dir: %app.var.dir%/tmp
+    app.images.dir: %app.var.dir%/images
+    
+    app.bin.file: %ROOT_PATH%/bin/application.php
+    
+    app.path.brandPageUrls: %ROOT_PATH%/configs/brand-page-urls.csv
+    
+    app.imageInfoHeaders:
+        - sku
+        - src
+        - order
+        - representative-photo
+        - product-url
+
+    product.urls.dir.name: produc-urls
+    product.imgInfo.dir.name: produc-images-info
+    
+    logger.path: %ROOT_PATH%/var/log
+    logger.error.name: application.log
+    logger.error.debugLevel: 300
+
+    logger.debug.name: info.log
+    logger.debug.debugLevel: 100
+
+    client.options: {base_uri: %app.autoplicity.host%, proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''}
+
+    urlCollector.timeout: 100000
+
+    imagePathCollector.urlsChunkSize: 1000
+    imagePathCollector.poolSize: 10
+
+    imagesCollector.imagesChunkSize: 1000
+    imagesCollector.poolSize: 10
+    
+    executor.productUrlCollector.poolSize: 5
+    executor.productUrlCollector.iterationTimOut: 1
+services:
+    app:
+        class: Symfony\Component\Console\Application
+        arguments: [%app.name%, %app.version%]
+    
+    logger.error:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%logger.path%/%logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
+
+    logger.debug:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%logger.path%/%logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+    
+    logger:
+        class: Monolog\Logger
+        arguments: [app]
+        calls:
+            - [pushHandler, [@logger.debug]]
+            - [pushHandler, [@logger.error]]
+
+    client:
+        class: GuzzleHttp\Client
+        arguments: [%client.options%]
+    
+    crawler:
+        class: Symfony\Component\DomCrawler\Crawler
+        scope: prototype
