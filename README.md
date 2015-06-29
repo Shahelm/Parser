@@ -24,6 +24,8 @@ The result will be located in the following folder: ROOT_PATH/var/images/
 ----
 
 ##Features
+To work with the proxy, you must add proxy to the file: ROOT_PATH/configs/proxies.yml in a specified format.
+
 After each run cleared the following directories:
 - ROOT_PATH/var/tmp
 - ROOT_PATH/var/images
