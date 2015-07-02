@@ -1,0 +1,49 @@
+imports:
+    - { resource: 'proxies.yml', ignore_errors: true }
+    - { resource: 'autoplicity/autoplicity.yml'}
+    - { resource: 'amazon/amazon.yml'}
+
+parameters:
+    app.name: Images Parser
+    app.version: 0.1
+    
+    app.memory_limit: 256M
+        
+    app.urls.dir.name: produc-urls
+    app.imgInfo.dir.name: produc-images-info
+       
+    app.imageInfoHeaders:
+        - sku
+        - src
+        - order
+        - representative-photo
+        - product-url
+
+    logger.error.handler.name: application-error.log
+    logger.debug.handler.name: application-debug.log
+
+services:
+    app:
+        class: Symfony\Component\Console\Application
+        arguments: [%app.name%, %app.version%]
+
+    crawler:
+        class: Symfony\Component\DomCrawler\Crawler
+        scope: prototype
+
+    logger.error.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.log.dir%/%logger.error.handler.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
+        public: false
+        
+    logger.debug.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.log.dir%/%logger.debug.handler.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+        public: false
+
+    app.logger:
+        class: Monolog\Logger
+        arguments: [app]
+        calls:
+            - [pushHandler, [@logger.debug.handler]]
+            - [pushHandler, [@logger.error.handler]]

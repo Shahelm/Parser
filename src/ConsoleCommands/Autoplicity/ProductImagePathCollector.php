@@ -5,22 +5,24 @@
  * Date: 28.06.15
  * Time: 15:25
  */
-namespace ConsoleCommands;
+namespace ConsoleCommands\Autoplicity;
 
+use ConsoleCommands\Exceptions\NotValidInputData;
 use Entities\Image;
+use Exceptions\ApplicationException;
+use Exceptions\ContainerException;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
-use Helper\File;
+use Helper\Console;
+use Helper\CSV;
+use Helper\Resource;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
-use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceException;
-use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
@@ -28,8 +30,10 @@ use Symfony\Component\DomCrawler\Crawler;
  *
  * @package ConsoleCommands
  */
-class ProductImagePathCollector extends AbstractCommand
+class ProductImagePathCollector extends AbstractAutoplicity
 {
+    use Resource, Console;
+    
     const ERROR_GET_CONTENTS_PRODUCT_PAGES = 'Unable to retrieve the contents of the product pages.';
     const COMMAND_NAME = 'product:image-path-collector';
 
@@ -58,15 +62,15 @@ class ProductImagePathCollector extends AbstractCommand
      */
     protected function configure()
     {
-        $this->setName(self::COMMAND_NAME)
+        $this->setName($this->getParserName() . ':' . self::COMMAND_NAME)
             ->setDescription('Gathers information about galleries products.')
             ->addArgument(
-                ProductUrlCollector::PRODUCT_LIST_URL,
+                ProductUrlCollector::BRAND_PAGE,
                 InputArgument::REQUIRED,
                 'Link to a page with a list of products.'
             )
             ->addOption(
-                ProductImagesCollector::CSV_LINE_NUMBER,
+                self::CSV_LINE_NUMBER,
                 null,
                 InputOption::VALUE_OPTIONAL,
                 'Position in the csv file which must to start reading url-s products.',
@@ -79,29 +83,36 @@ class ProductImagePathCollector extends AbstractCommand
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceNotFoundException
-     * @throws ServiceCircularReferenceException
+     * @throws NotValidInputData
+     * @throws ApplicationException
      */
     protected function initialize(InputInterface $input, OutputInterface $output)
     {
         parent::initialize($input, $output);
         
-        $brandPageUrl = $input->getArgument(ProductUrlCollector::PRODUCT_LIST_URL);
+        $this->brandPageUrl = $input->getArgument(ProductUrlCollector::BRAND_PAGE);
         
-        $this->productUrlsFilePath = ProductUrlCollector::getPathToProductUrls($this->getContainer(), $brandPageUrl);
-        $this->productImageInfoFilePath = self::getPathToProductImageInfo($this->getContainer(), $brandPageUrl);
+        $this->productUrlsFilePath = \Helper\Path\get_path_to_product_urls($this->getParserName(), $this->brandPageUrl);
+        
+        try {
+            $this->poolSize = $this->container->getParameter('autoplicity.imagePathCollector.poolSize');
+        } catch (InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
+        
+        $this->fs->createDirIfNotExist(
+            \Helper\Path\get_path_to_product_image_info_dir(
+                $this->getParserName(),
+                $this->brandPageUrl
+            )
+        );
 
-        $this->poolSize = $this->getContainer()->getParameter('imagePathCollector.poolSize');
+        $this->productImageInfoFilePath = \Helper\Path\get_path_to_product_image_info(
+            $this->getParserName(),
+            $this->brandPageUrl
+        );
         
-        $pathToProductImagesInfo = $this->getContainer()->getParameter('app.tmp.dir') .
-            DIRECTORY_SEPARATOR . $brandPageUrl .
-            DIRECTORY_SEPARATOR . $this->getContainer()->getParameter('product.imgInfo.dir.name');
-
-        $this->createDirIfNotExist($pathToProductImagesInfo);
-        
-        $rows = File::getRowCount($this->productUrlsFilePath);
+        $rows = CSV::getRowCount($this->productUrlsFilePath);
         
         if (false === $rows) {
             $this->logger->addAlert(
@@ -116,31 +127,27 @@ class ProductImagePathCollector extends AbstractCommand
             'Url: %message% %current%/%max% [%bar%] %percent:3s%% %elapsed:6s%/%estimated:-6s% %memory:6s%'
         );
         
-        $this->progressBar->setMessage($brandPageUrl);
+        $this->progressBar->setMessage($this->brandPageUrl);
     }
 
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceCircularReferenceException
-     * @throws ServiceNotFoundException
-     *
      * @return int
+     *
+     * @throws ApplicationException
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $start = microtime(true);
-        
-        $brandPageUrl = $input->getArgument(ProductUrlCollector::PRODUCT_LIST_URL);
-        
         $handle = $this->openResource($this->productUrlsFilePath, 'rb');
-
         $csvHandle = $this->openResource($this->productImageInfoFilePath, 'ab');
         
-        $urlsChunkSize = (int)$this->getContainer()->getParameter('imagePathCollector.urlsChunkSize');
+        try {
+            $urlsChunkSize = (int)$this->container->getParameter('autoplicity.imagePathCollector.urlsChunkSize');
+        } catch (InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
         
         $urlsToParseImagePath = [];
         
@@ -148,7 +155,7 @@ class ProductImagePathCollector extends AbstractCommand
 
         $columnNames = ['url'];
 
-        while (false !== ($row = File::readCsvRow($handle, $columnNames))) {
+        while (false !== ($row = CSV::readRow($handle, $columnNames))) {
             if (isset($row['url'])) {
                 $url = $row['url'];
                 
@@ -177,15 +184,6 @@ class ProductImagePathCollector extends AbstractCommand
         
         $this->closeResource($handle, $this->productUrlsFilePath);
         $this->closeResource($csvHandle, $this->productImageInfoFilePath);
-        
-        $output->writeln('');
-        $this->logger->info(
-            'finish',
-            [
-                'url'  => $brandPageUrl,
-                'time' => round((microtime(true) - $start), 2),
-            ]
-        );
     }
 
     /**
@@ -206,7 +204,7 @@ class ProductImagePathCollector extends AbstractCommand
                     $img->getProductUrl()
                 ];
 
-                $isWrite = File::writeCsvRow($handle, $fields);
+                $isWrite = CSV::writeRow($handle, $fields);
 
                 if (false === $isWrite) {
                     $this->logger->addError(
@@ -229,7 +227,7 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return Image[]
      *
-     * @throws \InvalidArgumentException
+     * @throws ApplicationException
      */
     private function parseProductsImagesInfo(array $urlsToParseImagePath)
     {
@@ -300,7 +298,7 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return \Entities\Image[]
      *
-     * @throws \InvalidArgumentException
+     * @throws ApplicationException
      */
     private function parseProductImagesInfo($response, $url)
     {
@@ -314,7 +312,7 @@ class ProductImagePathCollector extends AbstractCommand
         try {
             $bodyAsString = $body->getContents();
 
-            $crawler = $this->getCrawler();
+            $crawler = $this->newInstanceCrawler();
             $crawler->addContent($bodyAsString);
 
             $sku = $this->getProductSku($crawler);
@@ -348,13 +346,16 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return bool
      *
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
+     * @throws ApplicationException
      */
     private function isRepresentativePhoto(Crawler $crawler)
     {
-        $galleryTitle = $this->getPictureImage($crawler)->attr('data-title');
-        
+        try {
+            $galleryTitle = $this->getPictureImage($crawler)->attr('data-title');
+        } catch (\InvalidArgumentException $e) {
+            throw ApplicationException::wrapException($e);
+        }
+
         return 'Representative Photo' === trim($galleryTitle);
     }
 
@@ -363,13 +364,16 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return string
      *
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
+     * @throws ApplicationException
      */
     private function getProductSku(Crawler $crawler)
     {
-        $sku = $crawler->filter('div.overview > div.productpadeleft > div.sku')->text();
-        
+        try {
+            $sku = $crawler->filter('div.overview > div.productpadeleft > div.sku')->text();
+        } catch (\Exception $e) {
+            throw ApplicationException::wrapException($e);
+        }
+
         $sku = preg_replace('#[sku]\s{0,}:?\s{0,}#i', '', trim($sku));
         
         return $sku;
@@ -380,15 +384,17 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return null|string
      *
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
+     * @throws ApplicationException
      */
     private function getPictureSource(Crawler $crawler)
     {
         $picture = $this->getPictureImage($crawler);
         
-        $src = $picture->attr('src');
+        try {
+            $src = $picture->attr('src');
+        } catch (\InvalidArgumentException $e) {
+            throw ApplicationException::wrapException($e);
+        }
 
         $src = $this->prepareImgSrc($src);
         
@@ -400,12 +406,17 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return Crawler
      *
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
+     * @throws ApplicationException
      */
     private function getPictureImage(Crawler $crawler)
     {
-        return $crawler->filter('div#galleria div.picture img')->first();
+        try {
+            $image = $crawler->filter('div#galleria div.picture img')->first();
+        } catch (\RuntimeException $e) {
+            throw ApplicationException::wrapException($e);
+        }
+
+        return $image;
     }
 
     /**
@@ -413,16 +424,18 @@ class ProductImagePathCollector extends AbstractCommand
      *
      * @return string
      *
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
+     * @throws ApplicationException
      */
     private function prepareImgSrc($src)
     {
         $src = trim($src);
         
         if ('' !== $src) {
-            $src = str_replace($this->getContainer()->getParameter('app.autoplicity.host'), '', $src);
+            try {
+                $src = str_replace($this->container->getParameter('autoplicity.host'), '', $src);
+            } catch (InvalidArgumentException $e) {
+                throw ContainerException::wrapException($e);
+            }
             
             if ('' !== $src) {
                 $src = '/' . $src;
@@ -435,18 +448,20 @@ class ProductImagePathCollector extends AbstractCommand
     /**
      * @param Crawler $crawler
      *
-     * @throws \RuntimeException
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     *
      * @return array
+     *
+     * @throws ApplicationException
      */
     private function getThumbsSrc(Crawler $crawler)
     {
         $result = [];
         
-        $imageNodes = $crawler->filter('div#galleria > div.picture-thumbs > div > a > img');
-        
+        try {
+            $imageNodes = $crawler->filter('div#galleria > div.picture-thumbs > div > a > img');
+        } catch (\RuntimeException $e) {
+            throw ApplicationException::wrapException($e);
+        }
+
         if (count($imageNodes) > 0) {
             /**
              * @var \DOMElement $imgNode
@@ -459,25 +474,7 @@ class ProductImagePathCollector extends AbstractCommand
                 }
             }
         }
-        
+
         return $result;
-    }
-
-    /**
-     * @param ContainerInterface $container
-     * @param string $brandPageUrl
-     *
-     * @return string
-     *
-     * @throws \InvalidArgumentException
-     */
-    public static function getPathToProductImageInfo(ContainerInterface $container, $brandPageUrl)
-    {
-        $pathToProductUrls = $container->getParameter('app.tmp.dir') .
-            DIRECTORY_SEPARATOR . $brandPageUrl .
-            DIRECTORY_SEPARATOR . $container->getParameter('product.imgInfo.dir.name') .
-            DIRECTORY_SEPARATOR . 'images-info';
-
-        return $pathToProductUrls;
     }
 }

@@ -5,29 +5,29 @@
  * Date: 28.06.15
  * Time: 0:32
  */
-namespace ConsoleCommands;
+namespace ConsoleCommands\Autoplicity;
 
+use ConsoleCommands\Exceptions\NotValidInputData;
+use Exceptions\ApplicationException;
+use Exceptions\ContainerException;
 use GuzzleHttp\Exception\TransferException;
-use Helper\File;
+use Helper\CSV;
+use Helper\Resource;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
-use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceException;
-use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 
 /**
  * Class ProductUrlCollector
  *
  * @package ConsoleCommands
  */
-class ProductUrlCollector extends AbstractCommand
+class ProductUrlCollector extends AbstractAutoplicity
 {
-    const PRODUCT_LIST_URL = 'product-list-url';
-    const PRODUCT_LIST_PAGE = 'page';
+    use Resource;
+    
     const COMMAND_NAME = 'product:url-collector';
 
     /**
@@ -39,16 +39,21 @@ class ProductUrlCollector extends AbstractCommand
      * @var string
      */
     private $productUrlsFilePath;
-
+    
+    /**
+     * @var int
+     */
+    private $page;
+    
     /**
      * @throws \InvalidArgumentException
      */
     protected function configure()
     {
-        $this->setName(self::COMMAND_NAME)
+        $this->setName($this->getParserName() . ':' . self::COMMAND_NAME)
             ->setDescription('Gather a list of urls products page from pages product list.')
             ->addArgument(
-                self::PRODUCT_LIST_URL,
+                self::BRAND_PAGE,
                 InputArgument::REQUIRED,
                 'Link to a page with a list of products.'
             )
@@ -66,57 +71,52 @@ class ProductUrlCollector extends AbstractCommand
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceNotFoundException
-     * @throws ServiceCircularReferenceException
+     * @throws NotValidInputData
+     * @throws ApplicationException
      */
     protected function initialize(InputInterface $input, OutputInterface $output)
     {
         parent::initialize($input, $output);
         
-        $brandPageUrl = $input->getArgument(self::PRODUCT_LIST_URL);
+        $this->brandPageUrl = $input->getArgument(self::BRAND_PAGE);
+        $this->page = $input->getOption(self::PRODUCT_LIST_PAGE);
         
-        $this->pathToProductLinks = $this->getContainer()->getParameter('app.tmp.dir') .
-            DIRECTORY_SEPARATOR . $brandPageUrl .
-            DIRECTORY_SEPARATOR . $this->getContainer()->getParameter('product.urls.dir.name');
+        $this->pathToProductLinks = \Helper\Path\get_path_to_product_urls_dir(
+            $this->getParserName(),
+            $this->brandPageUrl
+        );
         
-        $this->createDirIfNotExist($this->pathToProductLinks);
-        
-        $this->productUrlsFilePath = self::getPathToProductUrls($this->getContainer(), $brandPageUrl);
+        $this->fs->createDirIfNotExist($this->pathToProductLinks);
+
+        $this->productUrlsFilePath = \Helper\Path\get_path_to_product_urls($this->getParserName(), $this->brandPageUrl);
     }
-    
+
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceCircularReferenceException
-     * @throws ServiceNotFoundException
-     *
      * @return int
+     * @throws ApplicationException
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $start = microtime(true);
-        
-        $brandPageUrl = $input->getArgument(self::PRODUCT_LIST_URL);
-        $page = $input->getOption(self::PRODUCT_LIST_PAGE);
-
-        /**
-         * @var int $timeOut
-         */
-        $timeOut = $this->getContainer()->getParameter('urlCollector.timeout');
+        try {
+            /**
+             * @var int $timeOut
+             */
+            $timeOut = $this->container->getParameter('autoplicity.urlCollector.timeout');
+        } catch (\InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
         
         $handle = $this->openResource($this->productUrlsFilePath, 'ab');
 
         $progressBar = new ProgressBar($output);
         $progressBar->setFormat('Url: %message% %current% [%bar%] %elapsed:6s% %memory:6s%');
-        $progressBar->setMessage($brandPageUrl);
+        $progressBar->setMessage($this->brandPageUrl);
         $progressBar->start();
         
-        while ($productLinks = $this->getListOfProductUrls($brandPageUrl, $page)) {
+        while ($productLinks = $this->getListOfProductUrls($this->brandPageUrl, $this->page)) {
             try {
                 $progressBar->advance();
             } catch (\LogicException $e) {
@@ -124,7 +124,7 @@ class ProductUrlCollector extends AbstractCommand
             }
             
             foreach ($productLinks as $url) {
-                $isWrite = File::writeCsvRow($handle, [$url]);
+                $isWrite = CSV::writeRow($handle, [$url]);
                 
                 if (false === $isWrite) {
                     $this->logger->addError('Unable to write to a file url of the product.', ['url' => $url]);
@@ -132,22 +132,12 @@ class ProductUrlCollector extends AbstractCommand
             }
             
             usleep($timeOut);
-            $page++;
+            $this->page++;
         }
         
         $progressBar->finish();
         
         $this->closeResource($handle, $this->productUrlsFilePath);
-        
-        $output->writeln('');
-        $this->logger->info(
-            'finish',
-            [
-                'url'  => $brandPageUrl,
-                'page' => $page,
-                'time' => round((microtime(true) - $start), 2),
-            ]
-        );
     }
 
     /**
@@ -179,7 +169,7 @@ class ProductUrlCollector extends AbstractCommand
                 try {
                     $bodyAsString = $body->getContents();
 
-                    $crawler = $this->getCrawler();
+                    $crawler = $this->newInstanceCrawler();
                     $crawler->addContent($bodyAsString);
 
                     $crawler = $crawler->filter('div#productsList div.product-item div.picture a');
@@ -207,23 +197,5 @@ class ProductUrlCollector extends AbstractCommand
         }
         
         return $productLinks;
-    }
-
-    /**
-     * @param ContainerInterface $container
-     * @param string $brandPageUrl
-     *
-     * @return string
-     *
-     * @throws \InvalidArgumentException
-     */
-    public static function getPathToProductUrls($container, $brandPageUrl)
-    {
-        $pathToProductUrls = $container->getParameter('app.tmp.dir') .
-            DIRECTORY_SEPARATOR . $brandPageUrl .
-            DIRECTORY_SEPARATOR . $container->getParameter('product.urls.dir.name') .
-            DIRECTORY_SEPARATOR . 'urls.csv';
-        
-        return $pathToProductUrls;
     }
 }

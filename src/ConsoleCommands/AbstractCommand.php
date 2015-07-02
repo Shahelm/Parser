@@ -7,18 +7,17 @@
  */
 namespace ConsoleCommands;
 
+use ConsoleCommands\Exceptions\NotValidInputData;
+use Exceptions\ApplicationException;
 use GuzzleHttp\Client;
 use Helper\Container as ContainerHelper;
+use Helper\Filesystem;
 use Monolog\Logger;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
-use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceException;
-use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
-use Symfony\Component\Filesystem\Exception\IOException;
-use Symfony\Component\Filesystem\Filesystem;
 
 /**
  * Class AbstractCommand
@@ -27,6 +26,25 @@ use Symfony\Component\Filesystem\Filesystem;
  */
 abstract class AbstractCommand extends Command
 {
+    const CSV_LINE_NUMBER = 'csv-line-number';
+    const BRAND_PAGE = 'product-list-url';
+    const PRODUCT_LIST_PAGE = 'page';
+
+    /**
+     * @var OutputInterface
+     */
+    private $output;
+    
+    /**
+     * @var int
+     */
+    protected $start;
+    
+    /**
+     * @var ContainerInterface
+     */
+    protected $container;
+    
     /**
      * @var Logger
      */
@@ -41,130 +59,149 @@ abstract class AbstractCommand extends Command
      * @var Filesystem
      */
     protected $fs;
+    
+    /**
+     * @var FormatterHelper
+     */
+    protected $formatter;
 
     /**
-     * @param OutputInterface $output
-     * @param string $message
+     * @return string
      */
-    protected function writelnError(OutputInterface $output, $message)
+    abstract protected function getParserName();
+        
+    /**
+     * @param InputInterface $input
+     *
+     * @return bool
+     */
+    protected function validation(InputInterface $input)
+    {
+        
+    }
+
+    /**
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     *
+     * @throws NotValidInputData
+     * @throws ApplicationException
+     */
+    protected function initialize(InputInterface $input, OutputInterface $output)
+    {
+        $this->output = $output;
+        $this->start = microtime(true);
+        
+        if (false === $this->validation($input)) {
+            throw new NotValidInputData();
+        }
+        
+        try {
+            $this->formatter = $this->getHelper('formatter');
+            $this->container = $this->getHelper(ContainerHelper::class)->getContainer();
+            ini_set('memory_limit', $this->getMemoryLimit());
+            $this->logger = $this->getLogger();
+            $this->client = $this->container->get($this->getParserName() . '.' . 'client');
+            $this->fs = new Filesystem();
+        } catch (\Exception $e) {
+            throw ApplicationException::wrapException($e);
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function run(InputInterface $input, OutputInterface $output)
+    {
+        $result = parent::run($input, $output);
+        
+        $this->shutdown($input, $output);
+        
+        return $result;
+    }
+
+    /**
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     *
+     * @return void
+     */
+    protected function shutdown(InputInterface $input, OutputInterface $output)
+    {
+
+    }
+
+    /**
+     * @return \Symfony\Component\DomCrawler\Crawler
+     *
+     * @throws ApplicationException
+     */
+    protected function newInstanceCrawler()
     {
         try {
-            $output->writeln("<error>{$message}</error>");
+            $crawler =$this->container->get('crawler');
+        } catch (\Exception $e) {
+            throw ApplicationException::wrapException($e);
+        }
+        
+        return $crawler;
+    }
+
+    /**
+     * @param string $message
+     *
+     * @return void
+     */
+    protected function writeln($message = '')
+    {
+        try {
+            $this->output->writeln($message);
         } catch (\InvalidArgumentException $e) {
             /*NOP*/
         }
     }
     
     /**
-     * @param InputInterface $input
-     * @param OutputInterface $output
+     * @return string
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceNotFoundException
-     * @throws ServiceCircularReferenceException
+     * @throws ApplicationException
      */
-    protected function initialize(InputInterface $input, OutputInterface $output)
+    private function getMemoryLimit()
     {
-        ini_set('memory_limit', $this->getContainer()->getParameter('app.memory_limit'));
-        $this->logger = $this->getContainer()->get('logger');
-        $this->client = $this->getClient();
-        $this->fs = new Filesystem();
-    }
-    
-    /**
-     * @return ContainerInterface
-     *
-     * @throws \InvalidArgumentException
-     */
-    protected function getContainer()
-    {
-        return $this->getHelper(ContainerHelper::class)->getContainer();
-    }
+        try {
+            $memoryLimit = $this->container->getParameter('app.memory_limit');
 
-    /**
-     * @return \GuzzleHttp\Client
-     *
-     * @throws \InvalidArgumentException
-     * @throws ServiceCircularReferenceException
-     * @throws ServiceNotFoundException
-     */
-    protected function getClient()
-    {
-        return $this->getContainer()->get('client');
-    }
+            $stageMemoryLimitKey = $this->getParserName() . '.' . 'memory_limit';
 
-    /**
-     * @return \Symfony\Component\DomCrawler\Crawler
-     *
-     * @throws \InvalidArgumentException
-     * @throws ServiceCircularReferenceException
-     * @throws ServiceNotFoundException
-     */
-    protected function getCrawler()
-    {
-        return $this->getContainer()->get('crawler');
-    }
-
-    /**
-     * @return void
-     */
-    protected function exitWithError()
-    {
-        exit(1);
-    }
-
-    /**
-     * @param string $filePath
-     * @param string $mode
-     * @param bool $onErrorExit
-     *
-     * @return resource
-     */
-    protected function openResource($filePath, $mode, $onErrorExit = true)
-    {
-        $handle = fopen($filePath, $mode);
-        
-        if (false === $handle) {
-            $this->logger->addAlert('Failed create a file handle.', ['file' => $filePath, 'mode' => $mode]);
-            
-            if ($onErrorExit) {
-                $this->exitWithError();
+            if ($this->container->hasParameter($stageMemoryLimitKey)) {
+                $memoryLimit = $this->container->getParameter($stageMemoryLimitKey);
             }
+        } catch (\InvalidArgumentException $e) {
+            throw ApplicationException::wrapException($e);
         }
         
-        return $handle;
-    }
-    
-    /**
-     * @param resource $handle
-     * @param string $file
-     *
-     * @return void
-     */
-    protected function closeResource($handle, $file)
-    {
-        $isClosed = fclose($handle);
-
-        if (false === $isClosed) {
-            $this->logger->addWarning('Unable to close the file descriptor', ['file' => $file]);
-        }
+        return $memoryLimit;
     }
 
     /**
-     * @param string $path
+     * @return Logger
      *
-     * @return void
+     * @throws ApplicationException
      */
-    protected function createDirIfNotExist($path)
+    private function getLogger()
     {
-        if (false === $this->fs->exists($path)) {
-            try {
-                $this->fs->mkdir($path);
-            } catch (IOException $e) {
-                $this->logger->alert('Unable to create directory.', ['message' => $e->getMessage(), 'file' => $path]);
-                $this->exitWithError();
+        $loggerKey = $this->getParserName() . '.' . 'logger';
+        
+        try {
+            if ($this->container->hasParameter($loggerKey)) {
+                $logger = $this->container->get($loggerKey);
+            } else {
+                $logger = $this->container->get('app.logger');
             }
+        } catch (\Exception $e) {
+            throw ApplicationException::wrapException($e);
         }
+        
+        return $logger;
     }
 }

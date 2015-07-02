@@ -35,6 +35,7 @@ class Image
      * @var bool
      */
     private $isRepresentative;
+    
     /**
      * @var string
      */

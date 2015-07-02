@@ -29,10 +29,14 @@ class Container extends Helper
     {
         $container = new ContainerBuilder();
         $container->setParameter('ROOT_PATH', \ROOT_PATH);
+        $container->setParameter('app.var.dir', \Helper\Path\var_path());
+        $container->setParameter('app.images.dir', \Helper\Path\images_path());
+        $container->setParameter('app.log.dir', \Helper\Path\log_path());
+        $container->setParameter('app.tmp.dir', \Helper\Path\tmp_path());
         
         $loader = new YamlFileLoader($container, new FileLocator(\ROOT_PATH . DIRECTORY_SEPARATOR . 'configs'));
 
-        $loader->load('services.yml');
+        $loader->load('application.yml');
         $container->compile();
         
         $this->container = $container;

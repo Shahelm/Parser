@@ -16,26 +16,41 @@ $app->getHelperSet()->set($containerHelper);
     
 $pathToCommands = ROOT_PATH . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'ConsoleCommands';
 
-$dir = new DirectoryIterator($pathToCommands);
+$directoryIterator = new \RecursiveDirectoryIterator($pathToCommands, \FilesystemIterator::SKIP_DOTS);
+$iterator = new \RecursiveIteratorIterator($directoryIterator, \RecursiveIteratorIterator::CHILD_FIRST);
 
-$commandNameSpace = '\\ConsoleCommands\\';
+$commandNameSpace = '\\ConsoleCommands';
 
 $commands = [];
 
 /**
- * @var \DirectoryIterator $fileInfo
+ * @var \SplFileInfo $fileInfo
  */
-foreach ($dir as $iterator) {
-    if ($iterator->isFile()) {
-        $commands[] = $commandNameSpace . $iterator->getBasename('.php');
+foreach ($iterator as $fileInfo) {
+    $pathParts = explode(DIRECTORY_SEPARATOR, $fileInfo->getPathname());
+
+    $command = $commandNameSpace;
+
+    $isNamespacePart = false;
+
+    foreach ($pathParts as $part) {
+        if (false === $isNamespacePart && 'ConsoleCommands' === $part) {
+            $isNamespacePart = true;
+        } elseif (false === $isNamespacePart) {
+            continue;
+        } else {
+            $command .= "\\{$part}";
+        }
     }
+
+    $commands[] = str_replace('.php', '', $command);
 }
 
 foreach ($commands as $command) {
     if (class_exists($command)) {
         $class = new \ReflectionClass($command);
         
-        if ($class->isInstantiable()) {
+        if ($class->isInstantiable() && $class->isSubclassOf('\\Symfony\\Component\\Console\\Command\\Command')) {
             $app->add(new $command);
         }
     }

@@ -1,0 +1,39 @@
+parameters:
+    autoplicity.host: http://autoplicity.com/
+    autoplicity.path.brandPageUrls: %ROOT_PATH%/configs/autoplicity/brand-page-urls.csv
+
+    autoplicity.client.options: {base_uri: %autoplicity.host%, proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''}
+    
+    autoplicity.urlCollector.timeout: 100000
+
+    autoplicity.imagePathCollector.poolSize: 10
+    autoplicity.imagePathCollector.urlsChunkSize: 1000
+
+    autoplicity.imagesCollector.poolSize: 10
+    
+    autoplicity.executor.productUrlCollector.poolSize: 5
+    autoplicity.executor.productUrlCollector.iterationTimOut: 1
+
+    autoplicity.logger.error.name: autoplicity-error.log
+    autoplicity.logger.debug.name: autoplicity-debug.log
+services:
+    autoplicity.client:
+        class: GuzzleHttp\Client
+        arguments: [%autoplicity.client.options%]
+
+    logger.error.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.log.dir%/%autoplicity.logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
+        public: false
+        
+    logger.debug.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.log.dir%/%autoplicity.logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+        public: false
+    
+    autoplicity.logger:
+        class: Monolog\Logger
+        arguments: [autoplicity]
+        calls:
+            - [pushHandler, [@logger.debug.handler]]
+            - [pushHandler, [@logger.error.handler]]

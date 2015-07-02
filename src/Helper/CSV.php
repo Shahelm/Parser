@@ -12,7 +12,7 @@ namespace Helper;
  *
  * @package Helper
  */
-class File
+class CSV
 {
     const CSV_SEPARATOR = ',';
     const CSV_ENCLOSURE  = '"';
@@ -24,7 +24,7 @@ class File
      *
      * @return bool
      */
-    public static function writeCsvRow($handle, array $fields)
+    public static function writeRow($handle, array $fields)
     {
         $isWrite = fputcsv($handle, $fields, self::CSV_SEPARATOR, self::CSV_ENCLOSURE, self::CSV_ESCAPE_CHAR);
         
@@ -37,7 +37,7 @@ class File
      *
      * @return array
      */
-    public static function readCsvRow($handle, array $columnNames = array())
+    public static function readRow($handle, array $columnNames = array())
     {
         $result = fgetcsv($handle, 0, self::CSV_SEPARATOR, self::CSV_ENCLOSURE, self::CSV_ESCAPE_CHAR);
         

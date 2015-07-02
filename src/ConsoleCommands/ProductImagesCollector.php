@@ -8,15 +8,25 @@
 namespace ConsoleCommands;
 
 use Entities\Image;
+use Exceptions\ApplicationException;
+use Exceptions\ContainerException;
+use GuzzleHttp\Client;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
-use Helper\File;
+use Helper\Console;
+use Helper\Container;
+use Helper\CSV;
+use Helper\Filesystem;
+use Helper\Resource;
+use Monolog\Logger;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceException;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
@@ -27,11 +37,38 @@ use Symfony\Component\Filesystem\Exception\IOException;
  *
  * @package ConsoleCommands
  */
-class ProductImagesCollector extends AbstractCommand
+class ProductImagesCollector extends Command
 {
-    const CSV_LINE_NUMBER = 'csv-line-number';
+    use Resource, Console;
+    
+    const OPTION_PARSER_NAME = 'parser-name';
     const COMMAND_NAME = 'product:image-collector';
+    
+    /**
+     * @var int
+     */
+    private $start;
+    
+    /**
+     * @var ContainerInterface
+     */
+    private $container;
 
+    /**
+     * @var Client
+     */
+    private $client;
+    
+    /**
+     * @var Logger
+     */
+    protected $logger;
+    
+    /**
+     * @var Filesystem
+     */
+    private $fs;
+    
     /**
      * @var string
      */
@@ -51,7 +88,17 @@ class ProductImagesCollector extends AbstractCommand
      * @var ProgressBar
      */
     private $progressBar;
-
+    
+    /**
+     * @var string
+     */
+    private $brandPageUrl;
+    
+    /**
+     * @var string
+     */
+    private $parserName;
+    
     /**
      * @throws \InvalidArgumentException
      */
@@ -60,12 +107,18 @@ class ProductImagesCollector extends AbstractCommand
         $this->setName(self::COMMAND_NAME)
             ->setDescription('Download images on the links listed in csv.')
             ->addArgument(
-                ProductUrlCollector::PRODUCT_LIST_URL,
+                AbstractCommand::BRAND_PAGE,
                 InputArgument::REQUIRED,
                 'Link to a page with a list of products.'
             )
             ->addOption(
-                self::CSV_LINE_NUMBER,
+                self::OPTION_PARSER_NAME,
+                null,
+                InputOption::VALUE_REQUIRED,
+                'The name parser for which images are downloaded.'
+            )
+            ->addOption(
+                AbstractCommand::CSV_LINE_NUMBER,
                 null,
                 InputOption::VALUE_OPTIONAL,
                 'Position in the csv file that you want to start downloading the images.',
@@ -78,30 +131,59 @@ class ProductImagesCollector extends AbstractCommand
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceNotFoundException
-     * @throws ServiceCircularReferenceException
+     * @throws ApplicationException
      */
     protected function initialize(InputInterface $input, OutputInterface $output)
     {
-        parent::initialize($input, $output);
+        $this->start = microtime(true);
+        
+        try {
+            $this->container = $this->getHelper(Container::class)->getContainer();
+        } catch (\InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
+        
+        $this->parserName = $input->getOption(self::OPTION_PARSER_NAME);
+        
+        try {
+            $this->client = $this->container->get($this->parserName . '.' . 'client');
+            $this->logger = $this->container->get($this->parserName . '.' . 'logger');
+        } catch (ServiceNotFoundException $e) {
+            throw ContainerException::wrapException($e);
+        } catch (ServiceCircularReferenceException $e) {
+            throw ContainerException::wrapException($e);
+        }
+        
+        $this->fs = new Filesystem();
+        
+        $this->brandPageUrl = $input->getArgument(AbstractCommand::BRAND_PAGE);
+        
+        try {
+            $poolSizeKey = $this->parserName . '.' . 'imagesCollector.poolSize';
 
-        $brandPageUrl = $input->getArgument(ProductUrlCollector::PRODUCT_LIST_URL);
+            $this->poolSize = 10;
+            
+            if ($this->container->hasParameter($poolSizeKey)) {
+                $this->poolSize = (int)$this->container->getParameter($poolSizeKey);
+            }
+            
+        } catch (InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
         
-        $this->poolSize = (int)$this->getContainer()->getParameter('imagesCollector.poolSize');
-        
-        $this->productImageInfoFilePath = ProductImagePathCollector::getPathToProductImageInfo(
-            $this->getContainer(),
-            $brandPageUrl
+        $this->productImageInfoFilePath = \Helper\Path\get_path_to_product_image_info(
+            $this->parserName,
+            $this->brandPageUrl
         );
         
-        $this->productImagesDir = $this->getContainer()->getParameter('app.images.dir')
-            . DIRECTORY_SEPARATOR . $brandPageUrl;
+        $this->productImagesDir = \Helper\Path\get_path_to_product_images_dir(
+            $this->parserName,
+            $this->brandPageUrl
+        );
 
-        $this->createDirIfNotExist($this->productImagesDir);
+        $this->fs->createDirIfNotExist($this->productImagesDir);
 
-        $rows = File::getRowCount($this->productImageInfoFilePath);
+        $rows = CSV::getRowCount($this->productImageInfoFilePath);
 
         if (false === $rows) {
             $this->logger->addAlert(
@@ -116,40 +198,36 @@ class ProductImagesCollector extends AbstractCommand
             'Url: %message% %current%/%max% [%bar%] %percent:3s%% %elapsed:6s%/%estimated:-6s% %memory:6s%'
         );
 
-        $this->progressBar->setMessage($brandPageUrl);
+        $this->progressBar->setMessage($this->brandPageUrl);
     }
 
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @throws \InvalidArgumentException
-     * @throws InvalidArgumentException
-     * @throws ServiceCircularReferenceException
-     * @throws ServiceNotFoundException
+     * @throws ApplicationException
      *
      * @return int
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $start = microtime(true);
-        
-        $brandPageUrl = $input->getArgument(ProductUrlCollector::PRODUCT_LIST_URL);
-        $csvRowOffset = $input->getOption(self::CSV_LINE_NUMBER);
+        $csvRowOffset = $input->getOption(AbstractCommand::CSV_LINE_NUMBER);
 
         $csvHandle = $this->openResource($this->productImageInfoFilePath, 'rb');
-
-        $columnNames = $this->getContainer()->getParameter('app.imageInfoHeaders');
         
-        $csvRowNumber = 0;
-        
-        $imagesChunkSize = (int)$this->getContainer()->getParameter('imagesCollector.imagesChunkSize');
+        try {
+            $columnNames = $this->container->getParameter('app.imageInfoHeaders');
+            $imagesChunkSize = 1000;
+            
+        } catch (InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
         
         $images = [];
-        
+        $csvRowNumber = 0;
         $this->progressBar->start();
 
-        while (false !== ($row = (File::readCsvRow($csvHandle, $columnNames)))) {
+        while (false !== ($row = (CSV::readRow($csvHandle, $columnNames)))) {
             if ($csvRowNumber >= $csvRowOffset) {
                 $image = Image::fromArray($row);
 
@@ -172,14 +250,18 @@ class ProductImagesCollector extends AbstractCommand
 
         $this->closeResource($csvHandle, $this->productImageInfoFilePath);
 
-        $output->writeln('');
-        $this->logger->info(
-            'finish',
-            [
-                'url'  => $brandPageUrl,
-                'time' => round((microtime(true) - $start), 2),
-            ]
-        );
+        try {
+            $output->writeln('');
+            $this->logger->info(
+                __CLASS__ . ':finish',
+                [
+                    'url'  => $this->brandPageUrl,
+                    'time' => round((microtime(true) - $this->start), 2),
+                ]
+            );
+        } catch (\Exception $e) {
+            /*NOP*/
+        }
     }
 
     /**
