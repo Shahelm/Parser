@@ -1,8 +1,7 @@
-##Terms
+###Terms
 - ROOT_PATH - The path to the directory where the unpacked parser.
 
-##Usage
-###The first variant
+###Usage
 Run in the command line:
 1. cd ROOT_PATH
 2. php bin/application.php autoplicity:executor:run
