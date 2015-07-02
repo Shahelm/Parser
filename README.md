@@ -3,6 +3,7 @@
 
 ###Usage
 Run in the command line:
+
 1. cd ROOT_PATH
 2. php bin/application.php autoplicity:executor:run
 
