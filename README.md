@@ -7,19 +7,12 @@
 ##The first variant
 Run in the command line:
 1. cd ROOT_PATH
-2. php bin/application.php executor:run
+2. php bin/application.php autoplicity:executor:run
 
 In this case, the parser tries to read brand-page-urls from a file located in the following path:
-- ROOT_PATH/configs/brand-page-urls.csv
+- ROOT_PATH/configs/autoplicity/brand-page-urls.csv
 
-##The second variant
-Run in the command line:
-1. cd ROOT_PATH
-2. php bin/application.php executor:run --file-path-to-brand-page-urls=/home/sasha/Загрузки/url.csv 
-
-Where {--file-path-to-brand-page-urls} - this path to the file with brand-page-urls
-
-The result will be located in the following folder: ROOT_PATH/var/images/
+The result will be located in the following folder: ROOT_PATH/var/images/autoplicity/
 
 ----
 
@@ -27,7 +20,7 @@ The result will be located in the following folder: ROOT_PATH/var/images/
 To work with the proxy, you must add proxy to the file: ROOT_PATH/configs/proxies.yml in a specified format.
 
 After each run cleared the following directories:
-- ROOT_PATH/var/tmp
-- ROOT_PATH/var/images
+- ROOT_PATH/var/tmp/autoplicity
+- ROOT_PATH/var/images/autoplicity
 
 It follows that the figures in the previous one will be lost starting.
