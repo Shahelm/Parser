@@ -33,18 +33,23 @@ class ProductUrlCollector extends AbstractAutoplicity
     /**
      * @var string
      */
-    private $pathToProductLinks;
+    protected $pathToProductLinks;
     
     /**
      * @var string
      */
-    private $productUrlsFilePath;
-    
+    protected $productUrlsFilePath;
+
+    /**
+     * @var string
+     */
+    protected $projectName;
+
     /**
      * @var int
      */
-    private $page;
-    
+    protected $page;
+
     /**
      * @throws \InvalidArgumentException
      */
@@ -56,6 +61,12 @@ class ProductUrlCollector extends AbstractAutoplicity
                 self::BRAND_PAGE,
                 InputArgument::REQUIRED,
                 'Link to a page with a list of products.'
+            )
+            ->addOption(
+                self::PROJECT_NAME,
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'Unique identifier across all brand-page'
             )
             ->addOption(
                 self::PRODUCT_LIST_PAGE,
@@ -80,17 +91,21 @@ class ProductUrlCollector extends AbstractAutoplicity
         
         $this->brandPageUrl = $input->getArgument(self::BRAND_PAGE);
         $this->page = $input->getOption(self::PRODUCT_LIST_PAGE);
+        $this->projectName = $input->getOption(self::PROJECT_NAME);
         
         $this->pathToProductLinks = \Helper\Path\get_path_to_product_urls_dir(
             $this->getParserName(),
-            $this->brandPageUrl
+            $this->getProjectName()
         );
         
         $this->fs->createDirIfNotExist($this->pathToProductLinks);
 
-        $this->productUrlsFilePath = \Helper\Path\get_path_to_product_urls($this->getParserName(), $this->brandPageUrl);
+        $this->productUrlsFilePath = \Helper\Path\get_path_to_product_urls(
+            $this->getParserName(),
+            $this->getProjectName()
+        );
     }
-
+    
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
@@ -104,25 +119,30 @@ class ProductUrlCollector extends AbstractAutoplicity
             /**
              * @var int $timeOut
              */
-            $timeOut = $this->container->getParameter('autoplicity.urlCollector.timeout');
+            $timeOutKey = $this->getParserName() . '.' . 'urlCollector.timeout';
+            $timeOut = 100000;
+            
+            if ($this->container->hasParameter($timeOutKey)) {
+                $timeOut = $this->container->getParameter($timeOutKey);
+            }
         } catch (\InvalidArgumentException $e) {
             throw ContainerException::wrapException($e);
         }
         
         $handle = $this->openResource($this->productUrlsFilePath, 'ab');
 
-        $progressBar = new ProgressBar($output);
-        $progressBar->setFormat('Url: %message% %current% [%bar%] %elapsed:6s% %memory:6s%');
-        $progressBar->setMessage($this->brandPageUrl);
+        $progressBar = $this->initProgressBar($output);
         $progressBar->start();
         
+        $numbersOfPage = $this->getNumbersOfPage();
+        
+        try {
+            $progressBar->setProgress($this->page);
+        } catch (\LogicException $e) {
+            /*NOP*/
+        }
+        
         while ($productLinks = $this->getListOfProductUrls($this->brandPageUrl, $this->page)) {
-            try {
-                $progressBar->advance();
-            } catch (\LogicException $e) {
-                $this->logger->warning($e->getMessage());
-            }
-            
             foreach ($productLinks as $url) {
                 $isWrite = CSV::writeRow($handle, [$url]);
                 
@@ -133,11 +153,34 @@ class ProductUrlCollector extends AbstractAutoplicity
             
             usleep($timeOut);
             $this->page++;
+
+            /**
+             * For the case when the process is determined by stopping the last page.
+             */
+            if ($numbersOfPage > 0 && $this->page > $numbersOfPage) {
+                break;
+            }
+            
+            try {
+                $progressBar->advance();
+            } catch (\LogicException $e) {
+                $this->logger->warning($e->getMessage());
+            }
         }
         
         $progressBar->finish();
         
         $this->closeResource($handle, $this->productUrlsFilePath);
+    }
+
+    /**
+     * 0 - means that the last page, you can define only brute force.
+     *
+     * @return int
+     */
+    protected function getNumbersOfPage()
+    {
+        return 0;
     }
 
     /**
@@ -148,13 +191,13 @@ class ProductUrlCollector extends AbstractAutoplicity
      */
     protected function getListOfProductUrls($url, $page)
     {
-        $productLinks = [];
+        $productUrls = [];
         
         $context = ['url' => $url];
         
         try {
-            $query = ['query' => ['PFC.PageNumber' => $page]];
-            
+            $query = $this->getQuery($url, $page);
+
             /**
              * @var \GuzzleHttp\Psr7\Response $response
              */
@@ -169,16 +212,8 @@ class ProductUrlCollector extends AbstractAutoplicity
                 try {
                     $bodyAsString = $body->getContents();
 
-                    $crawler = $this->newInstanceCrawler();
-                    $crawler->addContent($bodyAsString);
-
-                    $crawler = $crawler->filter('div#productsList div.product-item div.picture a');
-
-                    /**
-                     * @var \DOMElement $node
-                     */
-                    foreach ($crawler as $node) {
-                        $productLinks[] = $node->getAttribute('href');
+                    foreach ($this->getProductUrls($bodyAsString, $productUrls) as $productUrl) {
+                        $productUrls[] = $productUrl;
                     }
                 } catch (\RuntimeException $e) {
                     $context['message'] = $e->getMessage();
@@ -196,6 +231,75 @@ class ProductUrlCollector extends AbstractAutoplicity
             $this->logger->alert('Unable to get page content!', $context);
         }
         
-        return $productLinks;
+        return $productUrls;
+    }
+
+    /**
+     * @param $page
+     *
+     * @return array
+     */
+    protected function getQuery($url, $page)
+    {
+        $query = ['query' => ['PFC.PageNumber' => $page]];
+
+        return $query;
+    }
+
+    /**
+     * @param string $bodyAsString
+     *
+     * @return array
+     *
+     * @throws ApplicationException
+     * @throws \RuntimeException
+     */
+    protected function getProductUrls($bodyAsString)
+    {
+        $productUrls = [];
+        
+        $crawler = $this->newInstanceCrawler();
+        $crawler->addContent($bodyAsString);
+
+        $crawler = $crawler->filter('div#productsList div.product-item div.picture a');
+
+        /**
+         * @var \DOMElement $node
+         */
+        foreach ($crawler as $node) {
+            $productUrls[] = $node->getAttribute('href');
+        }
+
+        return $productUrls;
+    }
+
+    /**
+     * @return string
+     */
+    protected function getProjectName()
+    {
+        return null === $this->projectName ? $this->brandPageUrl : $this->projectName;
+    }
+
+    /**
+     * @param OutputInterface $output
+     *
+     * @return ProgressBar
+     */
+    protected function initProgressBar(OutputInterface $output)
+    {
+        $numbersOfPage = $this->getNumbersOfPage();
+        
+        $format = 'ID: %message% %current% [%bar%] %elapsed:6s% %memory:6s%';
+        
+        if ($numbersOfPage > 0) {
+            $format = 'ID: %message% %current%/%max% [%bar%] %percent:3s%% %elapsed:6s%/%estimated:-6s% %memory:6s%';
+        }
+        
+        $progressBar = new ProgressBar($output, $numbersOfPage);
+        $progressBar->setFormat($format);
+        $progressBar->setMessage($this->getProjectName());
+
+        return $progressBar;
     }
 }

@@ -9,6 +9,7 @@ namespace ConsoleCommands;
 
 use ConsoleCommands\Exceptions\NotValidInputData;
 use Exceptions\ApplicationException;
+use Exceptions\ContainerException;
 use GuzzleHttp\Client;
 use Helper\Container as ContainerHelper;
 use Helper\Filesystem;
@@ -18,6 +19,7 @@ use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 
 /**
  * Class AbstractCommand
@@ -28,6 +30,7 @@ abstract class AbstractCommand extends Command
 {
     const CSV_LINE_NUMBER = 'csv-line-number';
     const BRAND_PAGE = 'product-list-url';
+    const PROJECT_NAME = 'project-name';
     const PRODUCT_LIST_PAGE = 'page';
 
     /**
@@ -79,7 +82,7 @@ abstract class AbstractCommand extends Command
     {
         
     }
-
+    
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
@@ -147,6 +150,22 @@ abstract class AbstractCommand extends Command
         return $crawler;
     }
 
+    /**
+     * @return string
+     *
+     * @throws ApplicationException
+     */
+    protected function getHost()
+    {
+        try {
+            $host = $this->container->getParameter($this->getParserName() . '.' . 'host');
+        } catch (InvalidArgumentException $e) {
+            throw ContainerException::wrapException($e);
+        }
+
+        return $host;
+    }
+    
     /**
      * @param string $message
      *

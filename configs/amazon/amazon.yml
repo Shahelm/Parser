@@ -1,0 +1,30 @@
+parameters:
+    amazon.host: http://www.amazon.com/
+    amazon.path.brandPageUrls: %ROOT_PATH%/configs/amazon/brand-page-urls.csv
+
+    amazon.client.options: {base_uri: %amazon.host%, proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''}
+
+    amazon.logger.error.name: amazon-error.log
+    amazon.logger.debug.name: amazon-debug.log
+
+services:
+    amazon.client:
+        class: GuzzleHttp\Client
+        arguments: [%amazon.client.options%]
+
+    logger.error.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.log.dir%/%amazon.logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
+        public: false
+        
+    logger.debug.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.log.dir%/%amazon.logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+        public: false
+    
+    amazon.logger:
+        class: Monolog\Logger
+        arguments: [amazon]
+        calls:
+            - [pushHandler, [@logger.debug.handler]]
+            - [pushHandler, [@logger.error.handler]]
