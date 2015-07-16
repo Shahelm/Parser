@@ -4,8 +4,8 @@ imports:
     - { resource: 'amazon/amazon.yml'}
 
 parameters:
-    app.name: Images Parser
-    app.version: 0.1
+    app.name: Parser
+    app.version: 0.2
     
     app.memory_limit: 256M
         
