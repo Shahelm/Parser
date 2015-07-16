@@ -27,11 +27,11 @@ The result will be located in the following folder:
 
 1. Images: ROOT_PATH/var/amazon/images/{projectName}/*
 2. Product info: ROOT_PATH/var/amazon/tmp/{projectName}/product-info/product-info.csv
-3. Compatibility charts: ROOT_PATH/var/amazon/tmp/{projectName}/compatibility-charts/compatibility-charts-info.csv
+3. Compatibility charts: ROOT_PATH/var/amazon/compatibility-charts/{projectName}/compatibility-charts.csv
 
 *product-info.csv*: asin, productName, brand, manufacturer part number, product description, features
 
-*compatibility-charts-info.csv*: model, year, trim, engine, notes, brand, manufacturerPartNumber
+*compatibility-charts.csv*: model, year, trim, engine, notes, brand, manufacturerPartNumber
 
 ###Features
 To work with the proxy, you must add proxy to the file: ROOT_PATH/configs/proxies.yml in a specified format.
