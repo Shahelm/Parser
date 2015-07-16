@@ -11,8 +11,8 @@ parameters:
 
     autoplicity.imagesCollector.poolSize: 3
     
-    autoplicity.executor.productUrlCollector.poolSize: 5
-    autoplicity.executor.productUrlCollector.iterationTimOut: 1
+    autoplicity.executor.poolSize: 5
+    autoplicity.executor.iterationTimOut: 1
 
     autoplicity.logger.error.name: autoplicity-error.log
     autoplicity.logger.debug.name: autoplicity-debug.log

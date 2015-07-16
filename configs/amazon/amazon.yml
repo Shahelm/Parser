@@ -16,8 +16,8 @@ parameters:
         Cache-Control: 'max-age=0'
         User-Agent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
     
-    amazon.executor.productUrlCollector.poolSize: 5
-    amazon.executor.productUrlCollector.iterationTimOut: 1
+    amazon.executor.poolSize: 5
+    amazon.executor.iterationTimOut: 1
     
 services:
     amazon.client.arrayCookieJar:

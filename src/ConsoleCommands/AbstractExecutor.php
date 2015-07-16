@@ -143,11 +143,11 @@ abstract class AbstractExecutor extends AbstractCommand
 
             try {
                 $poolSize = $this->container->getParameter(
-                    $this->getParserName() . '.executor.productUrlCollector.poolSize'
+                    $this->getParserName() . '.executor.poolSize'
                 );
 
                 $timeOut = $this->container->getParameter(
-                    $this->getParserName() . '.executor.productUrlCollector.iterationTimOut'
+                    $this->getParserName() . '.executor.iterationTimOut'
                 );
             } catch (InvalidArgumentException $e) {
                 throw ContainerException::wrapException($e);
