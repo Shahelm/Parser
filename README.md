@@ -19,16 +19,17 @@ The result will be located in the following folder: ROOT_PATH/var/autoplicity/im
 
 In this case, the parser tries to read brand-page-urls from a file located in the following path:
 - ROOT_PATH/configs/amazon/brand-page-urls.csv 
-Format for amazon/brand-page-urls.csv: {brand-page-url},project-name
+`Format for amazon/brand-page-urls.csv: {brand-page-url},project-name`
 
 The result will be located in the following folder:
+
 1. Images: ROOT_PATH/var/amazon/images/{projectName}/*
 
 2. Product info: ROOT_PATH/var/amazon/tmp/{projectName}/product-info/product-info.csv
-Headers: asin, productName, brand, manufacturer part number, product description, features
+`CSV Headers: asin, productName, brand, manufacturer part number, product description, features`
 
 3. Compatibility charts: ROOT_PATH/var/amazon/tmp/{projectName}/compatibility-charts/compatibility-charts-info.csv
-Headers: model, year, trim, engine, notes, brand, manufacturerPartNumber
+`CSV Headers: model, year, trim, engine, notes, brand, manufacturerPartNumber`
 
 ###Features
 To work with the proxy, you must add proxy to the file: ROOT_PATH/configs/proxies.yml in a specified format.
