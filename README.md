@@ -9,7 +9,7 @@ Run in the command line:
 2. php bin/application.php autoplicity:executor:run
 
 In this case, the parser tries to read brand-page-urls from a file located in the following path:
-1. ROOT_PATH/configs/autoplicity/brand-page-urls.csv
+- ROOT_PATH/configs/autoplicity/brand-page-urls.csv
 
 The result will be located in the following folder: ROOT_PATH/var/autoplicity/images/
 
@@ -18,18 +18,20 @@ The result will be located in the following folder: ROOT_PATH/var/autoplicity/im
 2. php bin/application.php amazon:executor:run
 
 In this case, the parser tries to read brand-page-urls from a file located in the following path:
-- ROOT_PATH/configs/amazon/brand-page-urls.csv 
-`Format for amazon/brand-page-urls.csv: {brand-page-url},project-name`
+
+ROOT_PATH/configs/amazon/brand-page-urls.csv
+
+Format for amazon/brand-page-urls.csv: {brand-page-url},project-name
 
 The result will be located in the following folder:
 
 1. Images: ROOT_PATH/var/amazon/images/{projectName}/*
-
 2. Product info: ROOT_PATH/var/amazon/tmp/{projectName}/product-info/product-info.csv
-`CSV Headers: asin, productName, brand, manufacturer part number, product description, features`
-
 3. Compatibility charts: ROOT_PATH/var/amazon/tmp/{projectName}/compatibility-charts/compatibility-charts-info.csv
-`CSV Headers: model, year, trim, engine, notes, brand, manufacturerPartNumber`
+
+*product-info.csv*: asin, productName, brand, manufacturer part number, product description, features
+
+*compatibility-charts-info.csv*: model, year, trim, engine, notes, brand, manufacturerPartNumber
 
 ###Features
 To work with the proxy, you must add proxy to the file: ROOT_PATH/configs/proxies.yml in a specified format.
