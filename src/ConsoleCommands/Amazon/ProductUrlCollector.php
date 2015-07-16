@@ -7,8 +7,6 @@
  */
 namespace ConsoleCommands\Amazon;
 
-use GuzzleHttp\Exception\TransferException;
-
 /**
  * Class ProductUrlCollector
  *
@@ -30,7 +28,7 @@ class ProductUrlCollector extends \ConsoleCommands\Autoplicity\ProductUrlCollect
     protected function getProductUrls($bodyAsString)
     {
         $productLinks = [];
-        
+
         $crawler = $this->newInstanceCrawler();
         $crawler->addContent($bodyAsString);
 
@@ -84,20 +82,14 @@ class ProductUrlCollector extends \ConsoleCommands\Autoplicity\ProductUrlCollect
         
         $context = ['url' => $this->brandPageUrl];
         
+        $request = $this->client->get($this->brandPageUrl);
+        
         try {
-            /**
-             * @var \GuzzleHttp\Psr7\Response $response
-             */
-            $response = $this->client->get($this->brandPageUrl);
-
+            $response = $this->client->send($request);
+            
             if (200 === $response->getStatusCode()) {
-                /**
-                 * @var \GuzzleHttp\Psr7\Stream $body
-                 */
-                $body = $response->getBody();
-
                 try {
-                    $bodyAsString = $body->getContents();
+                    $bodyAsString = $response->getBody(true);
                     $crawler = $this->newInstanceCrawler();
                     $crawler->addContent($bodyAsString);
 
@@ -115,7 +107,7 @@ class ProductUrlCollector extends \ConsoleCommands\Autoplicity\ProductUrlCollect
                 $context['status-code'] = $response->getStatusCode();
                 $this->logger->alert('Unable to get page content!', $context);
             }
-        } catch (TransferException $e) {
+        } catch (\Exception $e) {
             $context['message'] = $e->getMessage();
             $context['line'] = $e->getLine();
             $this->logger->alert('Unable to get page content!', $context);

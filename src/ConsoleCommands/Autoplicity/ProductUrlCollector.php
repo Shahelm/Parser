@@ -9,8 +9,6 @@ namespace ConsoleCommands\Autoplicity;
 
 use ConsoleCommands\Exceptions\NotValidInputData;
 use Exceptions\ApplicationException;
-use Exceptions\ContainerException;
-use GuzzleHttp\Exception\TransferException;
 use Helper\CSV;
 use Helper\Resource;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -28,7 +26,7 @@ class ProductUrlCollector extends AbstractAutoplicity
 {
     use Resource;
     
-    const COMMAND_NAME = 'product:url-collector';
+    const COMMAND_NAME = ':product:url-collector';
 
     /**
      * @var string
@@ -49,13 +47,13 @@ class ProductUrlCollector extends AbstractAutoplicity
      * @var int
      */
     protected $page;
-
+    
     /**
      * @throws \InvalidArgumentException
      */
     protected function configure()
     {
-        $this->setName($this->getParserName() . ':' . self::COMMAND_NAME)
+        $this->setName($this->getParserName() . self::COMMAND_NAME)
             ->setDescription('Gather a list of urls products page from pages product list.')
             ->addArgument(
                 self::BRAND_PAGE,
@@ -115,20 +113,6 @@ class ProductUrlCollector extends AbstractAutoplicity
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        try {
-            /**
-             * @var int $timeOut
-             */
-            $timeOutKey = $this->getParserName() . '.' . 'urlCollector.timeout';
-            $timeOut = 100000;
-            
-            if ($this->container->hasParameter($timeOutKey)) {
-                $timeOut = $this->container->getParameter($timeOutKey);
-            }
-        } catch (\InvalidArgumentException $e) {
-            throw ContainerException::wrapException($e);
-        }
-        
         $handle = $this->openResource($this->productUrlsFilePath, 'ab');
 
         $progressBar = $this->initProgressBar($output);
@@ -151,7 +135,6 @@ class ProductUrlCollector extends AbstractAutoplicity
                 }
             }
             
-            usleep($timeOut);
             $this->page++;
 
             /**
@@ -194,23 +177,16 @@ class ProductUrlCollector extends AbstractAutoplicity
         $productUrls = [];
         
         $context = ['url' => $url];
-        
+
         try {
             $query = $this->getQuery($url, $page);
-
-            /**
-             * @var \GuzzleHttp\Psr7\Response $response
-             */
-            $response = $this->client->get($url, $query);
-
+            
+            $request = $this->client->get($url, [], $query);
+            $response = $this->client->send($request);
+            
             if (200 === $response->getStatusCode()) {
-                /**
-                 * @var \GuzzleHttp\Psr7\Stream $body
-                 */
-                $body = $response->getBody();
-
                 try {
-                    $bodyAsString = $body->getContents();
+                    $bodyAsString = $response->getBody(true);
 
                     foreach ($this->getProductUrls($bodyAsString, $productUrls) as $productUrl) {
                         $productUrls[] = $productUrl;
@@ -224,7 +200,7 @@ class ProductUrlCollector extends AbstractAutoplicity
                 $context['status-code'] = $response->getStatusCode();
                 $this->logger->alert('Unable to get page content!', $context);
             }
-        } catch (TransferException $e) {
+        } catch (\Exception $e) {
             $context['message'] = $e->getMessage();
             $context['line'] = $e->getLine();
 
@@ -235,7 +211,7 @@ class ProductUrlCollector extends AbstractAutoplicity
     }
 
     /**
-     * @param $page
+     * @param int $page
      *
      * @return array
      */
@@ -289,9 +265,9 @@ class ProductUrlCollector extends AbstractAutoplicity
     protected function initProgressBar(OutputInterface $output)
     {
         $numbersOfPage = $this->getNumbersOfPage();
-        
+
         $format = 'ID: %message% %current% [%bar%] %elapsed:6s% %memory:6s%';
-        
+
         if ($numbersOfPage > 0) {
             $format = 'ID: %message% %current%/%max% [%bar%] %percent:3s%% %elapsed:6s%/%estimated:-6s% %memory:6s%';
         }

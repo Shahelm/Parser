@@ -11,11 +11,12 @@ use ConsoleCommands\Exceptions\NotValidInputData;
 use Entities\Image;
 use Exceptions\ApplicationException;
 use Exceptions\ContainerException;
-use GuzzleHttp\Pool;
-use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\Psr7\Response;
+use Guzzle\Http\Message\Request;
+use Guzzle\Http\Message\Response;
 use Helper\Console;
 use Helper\CSV;
+use Helper\ExecutorParallelQuery;
+use Helper\ImageWriter;
 use Helper\Resource;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
@@ -164,8 +165,7 @@ class ProductImagePathCollector extends AbstractAutoplicity
 
                     if ($urlsChunkSize === count($urlsToParseImagePath)) {
                         $imagesInfo = $this->parseProductsImagesInfo($urlsToParseImagePath);
-
-                        $this->writeImages($csvHandle, $imagesInfo);
+                        ImageWriter::write($csvHandle, $imagesInfo, $this->logger);
 
                         $urlsToParseImagePath = [];
                     }
@@ -177,7 +177,7 @@ class ProductImagePathCollector extends AbstractAutoplicity
         
         if (count($urlsToParseImagePath) > 0) {
             $imagesInfo = $this->parseProductsImagesInfo($urlsToParseImagePath);
-            $this->writeImages($csvHandle, $imagesInfo);
+            ImageWriter::write($csvHandle, $imagesInfo, $this->logger);
         }
         
         $this->progressBar->finish();
@@ -186,42 +186,6 @@ class ProductImagePathCollector extends AbstractAutoplicity
         $this->closeResource($csvHandle, $this->productImageInfoFilePath);
     }
 
-    /**
-     * @param resource $handle
-     * @param Image[] $images
-     *
-     * @return void
-     */
-    private function writeImages($handle, $images)
-    {
-        if (false === empty($images)) {
-            foreach ($images as $img) {
-                $fields = [
-                    $img->getSku(),
-                    $img->getPath(),
-                    $img->getOrder(),
-                    $img->isIsRepresentative(),
-                    $img->getProductUrl()
-                ];
-
-                $isWrite = CSV::writeRow($handle, $fields);
-
-                if (false === $isWrite) {
-                    $this->logger->addError(
-                        'Unable to write image info!',
-                        [
-                            'sku'               => $img->getSku(),
-                            'src'               => $img->getPath(),
-                            'order'             => $img->getOrder(),
-                            'is-representative' => $img->isIsRepresentative(),
-                            'product-url'       => $img->getProductUrl()
-                        ]
-                    );
-                }
-            }
-        }
-    }
-    
     /**
      * @param array $urlsToParseImagePath
      *
@@ -232,62 +196,43 @@ class ProductImagePathCollector extends AbstractAutoplicity
     private function parseProductsImagesInfo(array $urlsToParseImagePath)
     {
         $imagesInfo = [];
-
-        $requests = function ($urls) {
-            foreach ($urls as $url) {
-                yield new Request('GET', $url);
-            }
-        };
-
-        $pool = new Pool($this->client, $requests($urlsToParseImagePath), [
-            'concurrency' => $this->poolSize,
-            'fulfilled' => function (
-                Response $response,
-                $index
-            ) use (
-                $urlsToParseImagePath,
-                &$imagesInfo
-            ) {
-                $images = $this->parseProductImagesInfo($response, $urlsToParseImagePath[$index]);
-
-                try {
-                    $this->progressBar->advance();
-                } catch (\LogicException $e) {
-                    /*NOP*/
-                }
-
-                foreach ($images as $image) {
-                    if ($image instanceof Image) {
-                        $imagesInfo[] = $image;
-                    }
-                }
-            },
-            'rejected' => function ($reason, $index) use ($urlsToParseImagePath) {
-                try {
-                    $this->progressBar->advance();
-                } catch (\LogicException $e) {
-                    /*NOP*/
-                }
-
-                $this->logger->addAlert(
-                    'Unable to read the page content.',
-                    [
-                        'reason' => $reason,
-                        'url'    => $urlsToParseImagePath[$index]
-                    ]
-                );
-            },
-        ]);
-
-        /**
-         * Initiate the transfers and create a promise
-         */
-        $promise = $pool->promise();
+        $request = [];
         
-        /**
-         * Force the pool of requests to complete.
-         */
-        $promise->wait();
+        foreach ($urlsToParseImagePath as $url) {
+            $request[] = $this->client->get($url);
+        }
+        
+        (new ExecutorParallelQuery($this->client, $request, 3))
+            ->onSuccess(function (Request $request) use (&$imagesInfo) {
+                $url = $request->getUrl();
+                $response = $request->getResponse();
+
+                try {
+                    $images = $this->parseProductImagesInfo($response, $url);
+    
+                    foreach ($images as $image) {
+                        if ($image instanceof Image) {
+                            $imagesInfo[] = $image;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    $this->logger->addError(
+                        'Unable to process the content of the page.',
+                        ['url' => $url, 'message' => $e->getMessage()]
+                    );
+                }
+            })
+            ->onError(function (Request $request) {
+                $this->logger->addError('Unable to process the content of the page.', ['url' => $request->getUrl()]);
+            })
+            ->afterProcessing(function () {
+                try {
+                    $this->progressBar->advance();
+                } catch (\LogicException $e) {
+                    /*NOP*/
+                }
+            })
+            ->wait();
         
         return $imagesInfo;
     }
@@ -304,13 +249,8 @@ class ProductImagePathCollector extends AbstractAutoplicity
     {
         $images = [];
         
-        /**
-         * @var \GuzzleHttp\Psr7\Stream $body
-         */
-        $body = $response->getBody();
-
         try {
-            $bodyAsString = $body->getContents();
+            $bodyAsString = $response->getBody(true);
 
             $crawler = $this->newInstanceCrawler();
             $crawler->addContent($bodyAsString);
@@ -432,7 +372,7 @@ class ProductImagePathCollector extends AbstractAutoplicity
         
         if ('' !== $src) {
             try {
-                $src = str_replace($this->container->getParameter('autoplicity.host'), '', $src);
+                $src = trim(str_replace($this->getHost(), '', $src), '/');
             } catch (InvalidArgumentException $e) {
                 throw ContainerException::wrapException($e);
             }

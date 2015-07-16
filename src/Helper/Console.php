@@ -8,6 +8,7 @@
 namespace Helper;
 
 use Monolog\Logger;
+use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -18,6 +19,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * @package Helper
  *
  * @property Logger $logger
+ * @method Application getApplication
  */
 trait Console
 {

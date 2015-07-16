@@ -2,29 +2,53 @@ parameters:
     amazon.host: http://www.amazon.com/
     amazon.path.brandPageUrls: %ROOT_PATH%/configs/amazon/brand-page-urls.csv
 
-    amazon.client.options: {base_uri: %amazon.host%, proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''}
-
     amazon.logger.error.name: amazon-error.log
     amazon.logger.debug.name: amazon-debug.log
 
+    amazon.features.separator: '[|]'
+    
+    amazon.client.options: 
+        request.options: 
+            proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''
+    
+    amazon.client.request.headers:
+        Accept: 'text/html'
+        Cache-Control: 'max-age=0'
+        User-Agent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+    
+    amazon.executor.productUrlCollector.poolSize: 5
+    amazon.executor.productUrlCollector.iterationTimOut: 1
+    
 services:
-    amazon.client:
-        class: GuzzleHttp\Client
-        arguments: [%amazon.client.options%]
-
-    logger.error.handler:
-        class: Monolog\Handler\StreamHandler
-        arguments: [%app.log.dir%/%amazon.logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
-        public: false
-        
-    logger.debug.handler:
-        class: Monolog\Handler\StreamHandler
-        arguments: [%app.log.dir%/%amazon.logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+    amazon.client.arrayCookieJar:
+        class: Guzzle\Plugin\Cookie\CookieJar\ArrayCookieJar
         public: false
     
+    amazon.client.cookiePlugin:
+        class: Guzzle\Plugin\Cookie\CookiePlugin
+        arguments: [@amazon.client.arrayCookieJar]
+        public: false
+
+    amazon.client:
+        class: Guzzle\Http\Client
+        arguments: ['', %amazon.client.options%]
+        calls:
+            - [addSubscriber, [@amazon.client.cookiePlugin]]
+            - [setDefaultHeaders, [%amazon.client.request.headers%]]
+
+    amazon.logger.error.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.var.dir%/amazon/log/%amazon.logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
+        public: false
+
+    amazon.logger.debug.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments: [%app.var.dir%/amazon/log/%amazon.logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+        public: false
+
     amazon.logger:
         class: Monolog\Logger
         arguments: [amazon]
         calls:
-            - [pushHandler, [@logger.debug.handler]]
-            - [pushHandler, [@logger.error.handler]]
+            - [pushHandler, [@amazon.logger.debug.handler]]
+            - [pushHandler, [@amazon.logger.error.handler]]

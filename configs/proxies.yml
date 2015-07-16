@@ -1,6 +1,4 @@
 #Example:
-#
-#parameters:
-#    proxy:    
-#        - 83.128.35.97:80
-#        - 92.222.237.4:8888
+
+parameters:
+#    proxy: 127.0.0.0

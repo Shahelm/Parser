@@ -30,20 +30,3 @@ services:
     crawler:
         class: Symfony\Component\DomCrawler\Crawler
         scope: prototype
-
-    logger.error.handler:
-        class: Monolog\Handler\StreamHandler
-        arguments: [%app.log.dir%/%logger.error.handler.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
-        public: false
-        
-    logger.debug.handler:
-        class: Monolog\Handler\StreamHandler
-        arguments: [%app.log.dir%/%logger.debug.handler.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
-        public: false
-
-    app.logger:
-        class: Monolog\Logger
-        arguments: [app]
-        calls:
-            - [pushHandler, [@logger.debug.handler]]
-            - [pushHandler, [@logger.error.handler]]

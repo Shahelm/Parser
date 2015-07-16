@@ -1,39 +1,42 @@
 parameters:
-    autoplicity.host: http://autoplicity.com/
+    autoplicity.host: http://autoplicity.com
     autoplicity.path.brandPageUrls: %ROOT_PATH%/configs/autoplicity/brand-page-urls.csv
 
-    autoplicity.client.options: {base_uri: %autoplicity.host%, proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''}
+    autoplicity.client.options: 
+        request.options: 
+            proxy: @=container.hasParameter('proxy') ? parameter('proxy') : ''
     
-    autoplicity.urlCollector.timeout: 100000
-
-    autoplicity.imagePathCollector.poolSize: 10
+    autoplicity.imagePathCollector.poolSize: 3
     autoplicity.imagePathCollector.urlsChunkSize: 1000
 
-    autoplicity.imagesCollector.poolSize: 10
+    autoplicity.imagesCollector.poolSize: 3
     
     autoplicity.executor.productUrlCollector.poolSize: 5
     autoplicity.executor.productUrlCollector.iterationTimOut: 1
 
     autoplicity.logger.error.name: autoplicity-error.log
     autoplicity.logger.debug.name: autoplicity-debug.log
+
 services:
     autoplicity.client:
-        class: GuzzleHttp\Client
-        arguments: [%autoplicity.client.options%]
+        class: Guzzle\Http\Client
+        arguments: ['', %autoplicity.client.options%]
+        calls:
+            - [setBaseUrl, [%autoplicity.host%]]
 
-    logger.error.handler:
+    autoplicity.logger.error.handler:
         class: Monolog\Handler\StreamHandler
-        arguments: [%app.log.dir%/%autoplicity.logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
+        arguments: [%app.var.dir%/autoplicity/log/%autoplicity.logger.error.name%, @=constant('\\\Monolog\\\Logger::WARNING'), false]
         public: false
-        
-    logger.debug.handler:
+
+    autoplicity.logger.debug.handler:
         class: Monolog\Handler\StreamHandler
-        arguments: [%app.log.dir%/%autoplicity.logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
+        arguments: [%app.var.dir%/autoplicity/log/%autoplicity.logger.debug.name%, @=constant('\\\Monolog\\\Logger::DEBUG'), false]
         public: false
-    
+
     autoplicity.logger:
         class: Monolog\Logger
         arguments: [autoplicity]
         calls:
-            - [pushHandler, [@logger.debug.handler]]
-            - [pushHandler, [@logger.error.handler]]
+            - [pushHandler, [@autoplicity.logger.debug.handler]]
+            - [pushHandler, [@autoplicity.logger.error.handler]]

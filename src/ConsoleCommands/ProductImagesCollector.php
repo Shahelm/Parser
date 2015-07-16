@@ -10,13 +10,13 @@ namespace ConsoleCommands;
 use Entities\Image;
 use Exceptions\ApplicationException;
 use Exceptions\ContainerException;
-use GuzzleHttp\Client;
-use GuzzleHttp\Pool;
-use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\Psr7\Response;
+use Guzzle\Http\Client;
+use Guzzle\Http\Message\Request;
+use Guzzle\Http\Message\Response;
 use Helper\Console;
 use Helper\Container;
 use Helper\CSV;
+use Helper\ExecutorParallelQuery;
 use Helper\Filesystem;
 use Helper\Resource;
 use Monolog\Logger;
@@ -92,7 +92,7 @@ class ProductImagesCollector extends Command
     /**
      * @var string
      */
-    private $brandPageUrl;
+    private $projectName;
     
     /**
      * @var string
@@ -107,7 +107,7 @@ class ProductImagesCollector extends Command
         $this->setName(self::COMMAND_NAME)
             ->setDescription('Download images on the links listed in csv.')
             ->addArgument(
-                AbstractCommand::BRAND_PAGE,
+                AbstractCommand::PROJECT_NAME,
                 InputArgument::REQUIRED,
                 'Link to a page with a list of products.'
             )
@@ -156,12 +156,12 @@ class ProductImagesCollector extends Command
         
         $this->fs = new Filesystem();
         
-        $this->brandPageUrl = $input->getArgument(AbstractCommand::BRAND_PAGE);
+        $this->projectName = $input->getArgument(AbstractCommand::PROJECT_NAME);
         
         try {
             $poolSizeKey = $this->parserName . '.' . 'imagesCollector.poolSize';
 
-            $this->poolSize = 10;
+            $this->poolSize = 3;
             
             if ($this->container->hasParameter($poolSizeKey)) {
                 $this->poolSize = (int)$this->container->getParameter($poolSizeKey);
@@ -173,12 +173,12 @@ class ProductImagesCollector extends Command
         
         $this->productImageInfoFilePath = \Helper\Path\get_path_to_product_image_info(
             $this->parserName,
-            $this->brandPageUrl
+            $this->projectName
         );
         
         $this->productImagesDir = \Helper\Path\get_path_to_product_images_dir(
             $this->parserName,
-            $this->brandPageUrl
+            $this->projectName
         );
 
         $this->fs->createDirIfNotExist($this->productImagesDir);
@@ -198,7 +198,7 @@ class ProductImagesCollector extends Command
             'Url: %message% %current%/%max% [%bar%] %percent:3s%% %elapsed:6s%/%estimated:-6s% %memory:6s%'
         );
 
-        $this->progressBar->setMessage($this->brandPageUrl);
+        $this->progressBar->setMessage($this->projectName);
     }
 
     /**
@@ -255,7 +255,7 @@ class ProductImagesCollector extends Command
             $this->logger->info(
                 __CLASS__ . ':finish',
                 [
-                    'url'  => $this->brandPageUrl,
+                    'url'  => $this->projectName,
                     'time' => round((microtime(true) - $this->start), 2),
                 ]
             );
@@ -270,10 +270,8 @@ class ProductImagesCollector extends Command
      */
     protected function saveImage($response, $image)
     {
-        $body = $response->getBody();
-
         $imageFileName = $image->getImageFileName();
-        $imageContent = $body->getContents();
+        $imageContent = $response->getBody(true);
 
         $filePath = $this->productImagesDir . DIRECTORY_SEPARATOR . $imageFileName;
 
@@ -297,48 +295,26 @@ class ProductImagesCollector extends Command
      */
     private function downloadImages($images)
     {
-        /**
-         * @param Image[] $images
-         *
-         * @return \Generator
-         */
-        $requests = function ($images) {
-            foreach ($images as $image) {
-                yield new Request('GET', $image->getPath());
-            }
-        };
+        $requests = [];
 
-        $pool = new Pool($this->client, $requests($images), [
-            'concurrency' => $this->poolSize,
-            'fulfilled' => function (Response $response, $index) use ($images) {
-                $this->saveImage($response, $images[$index]);
+        foreach ($images as $image) {
+            $requests[] = $this->client->get($image->getPath());
+        }
 
+        (new ExecutorParallelQuery($this->client, $requests, 5))
+            ->onSuccess(function (Request $request, $index) use ($images) {
+                $this->saveImage($request->getResponse(), $images[$index]);
+            })
+            ->onError(function (Request $request) {
+                $this->logger->addAlert('Unable to read image.', ['url' => $request->getUrl()]);
+            })
+            ->afterProcessing(function () {
                 try {
                     $this->progressBar->advance();
                 } catch (\LogicException $e) {
                     /*NOP*/
                 }
-            },
-            'rejected' => function ($reason, $index) use ($images) {
-                $this->logger->addAlert(
-                    'Unable to read image.',
-                    [
-                        'reason'      => $reason,
-                        'url'         => $images[$index]->getPath(),
-                        'product-url' => $images[$index]->getProductUrl()
-                    ]
-                );
-
-                try {
-                    $this->progressBar->advance();
-                } catch (\LogicException $e) {
-                    /*NOP*/
-                }
-            },
-        ]);
-        
-        $promise = $pool->promise();
-        
-        $promise->wait();
+            })
+            ->wait();
     }
 }

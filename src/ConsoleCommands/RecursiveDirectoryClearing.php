@@ -7,9 +7,7 @@
  */
 namespace ConsoleCommands;
 
-use Helper\Container;
 use Helper\Filesystem;
-use Monolog\Logger;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -39,17 +37,17 @@ class RecursiveDirectoryClearing extends Command
     }
 
     /**
-     * {@inheritdoc}
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     *
+     * @return int|null|void
+     *
+     * @throws \RuntimeException
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $fs = new Filesystem();
 
-        /**
-         * @var Logger $logger
-         */
-        $logger = $this->getHelper(Container::class)->getContainer()->get('app.logger');
-        
         $path = $input->getArgument(self::PATH);
 
         if ($fs->exists($path)) {
@@ -75,14 +73,14 @@ class RecursiveDirectoryClearing extends Command
             foreach ($filesToRemove as $path) {
                 $isDelete = unlink($path);
                 if (false === $isDelete) {
-                    $logger->warn('Failed to delete the resource.', [$path]);
+                    throw new \RuntimeException(sprintf('Failed to delete the resource. Path: %s', $path));
                 }
             }
 
             foreach ($dirsToRemove as $path) {
                 $isDelete = rmdir($path);
                 if (false === $isDelete) {
-                    $logger->warn('Failed to delete the resource.', [$path]);
+                    throw new \RuntimeException(sprintf('Failed to delete the resource. Path: %s', $path));
                 }
             }
         }

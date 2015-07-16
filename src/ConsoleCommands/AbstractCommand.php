@@ -10,7 +10,7 @@ namespace ConsoleCommands;
 use ConsoleCommands\Exceptions\NotValidInputData;
 use Exceptions\ApplicationException;
 use Exceptions\ContainerException;
-use GuzzleHttp\Client;
+use Guzzle\Http\Client;
 use Helper\Container as ContainerHelper;
 use Helper\Filesystem;
 use Monolog\Logger;
@@ -29,7 +29,7 @@ use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 abstract class AbstractCommand extends Command
 {
     const CSV_LINE_NUMBER = 'csv-line-number';
-    const BRAND_PAGE = 'product-list-url';
+    const BRAND_PAGE = 'brand-page';
     const PROJECT_NAME = 'project-name';
     const PRODUCT_LIST_PAGE = 'page';
 
@@ -98,14 +98,27 @@ abstract class AbstractCommand extends Command
         if (false === $this->validation($input)) {
             throw new NotValidInputData();
         }
-        
+
         try {
             $this->formatter = $this->getHelper('formatter');
             $this->container = $this->getHelper(ContainerHelper::class)->getContainer();
             ini_set('memory_limit', $this->getMemoryLimit());
+            $this->fs = new Filesystem();
+            
+            $projectPath = \Helper\Path\var_path() . DIRECTORY_SEPARATOR .  $this->getParserName();
+
+            $paths = [
+                $projectPath . DIRECTORY_SEPARATOR . 'log',
+                $projectPath . DIRECTORY_SEPARATOR . 'tmp',
+                $projectPath . DIRECTORY_SEPARATOR . 'images'
+            ];
+            
+            foreach ($paths as $path) {
+                $this->fs->createDirIfNotExist($path);
+            }
+            
             $this->logger = $this->getLogger();
             $this->client = $this->container->get($this->getParserName() . '.' . 'client');
-            $this->fs = new Filesystem();
         } catch (\Exception $e) {
             throw ApplicationException::wrapException($e);
         }
@@ -212,11 +225,7 @@ abstract class AbstractCommand extends Command
         $loggerKey = $this->getParserName() . '.' . 'logger';
         
         try {
-            if ($this->container->hasParameter($loggerKey)) {
-                $logger = $this->container->get($loggerKey);
-            } else {
-                $logger = $this->container->get('app.logger');
-            }
+            $logger = $this->container->get($loggerKey);
         } catch (\Exception $e) {
             throw ApplicationException::wrapException($e);
         }
