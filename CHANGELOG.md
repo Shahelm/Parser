@@ -8,3 +8,11 @@
 - Change the entire structure Projects for the convenience of adding new parsers
 - Replace GuzzleHttp\Client on Guzzle\Http\Client for work with Cookies
 - Fixed a bug with proxy functionality
+
+### v0.201 (2015/07/17)
+fixed bug with deleting folders:
+- images
+- compatibility-charts
+- log
+- tmp
+in src/ConsoleCommands/Amazon/Executor.php
