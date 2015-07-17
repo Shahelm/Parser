@@ -46,8 +46,13 @@ class Executor extends AbstractExecutor
      */
     private function cleatState(OutputInterface $output)
     {
+        $parserFolder = \Helper\Path\var_path() . DIRECTORY_SEPARATOR . $this->getParserName();
+        
         $tmpDirs = [
-            \Helper\Path\var_path() . DIRECTORY_SEPARATOR . $this->getParserName()
+            $parserFolder . DIRECTORY_SEPARATOR . 'images',
+            $parserFolder . DIRECTORY_SEPARATOR . 'compatibility-charts',
+            $parserFolder . DIRECTORY_SEPARATOR . 'log',
+            $parserFolder . DIRECTORY_SEPARATOR . 'tmp',
         ];
 
         $formattedLine = $this->formatter->formatSection('Stage: clear tmp dirs.', implode(', ', $tmpDirs));
