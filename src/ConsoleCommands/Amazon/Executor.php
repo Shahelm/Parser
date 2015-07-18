@@ -51,7 +51,6 @@ class Executor extends AbstractExecutor
         $tmpDirs = [
             $parserFolder . DIRECTORY_SEPARATOR . 'images',
             $parserFolder . DIRECTORY_SEPARATOR . 'compatibility-charts',
-            $parserFolder . DIRECTORY_SEPARATOR . 'log',
             $parserFolder . DIRECTORY_SEPARATOR . 'tmp',
         ];
 

@@ -16,3 +16,6 @@ fixed bug with deleting folders:
 - log
 - tmp
 in src/ConsoleCommands/Amazon/Executor.php
+
+### v0.202 (2015/07/18)
+- fixed bug with deleting directories log in ConsoleCommands/Amazon/Executor.php
