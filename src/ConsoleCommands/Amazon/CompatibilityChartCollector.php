@@ -216,6 +216,7 @@ class CompatibilityChartCollector extends AbstractAmazon
                     
                     foreach ($compatibilityChart as $row) {
                         $compatibilityChart = [
+                            'make'                   => '',
                             'model'                  => '',
                             'year'                   => '',
                             'trim'                   => '',
@@ -266,6 +267,7 @@ class CompatibilityChartCollector extends AbstractAmazon
             
             foreach ($compatibilityCharts as $compatibilityChart) {
                 $fields = [
+                    'make'                   => $compatibilityChart['make'],
                     'model'                  => $compatibilityChart['model'],
                     'year'                   => $compatibilityChart['year'],
                     'trim'                   => $compatibilityChart['trim'],

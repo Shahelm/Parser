@@ -19,3 +19,6 @@ in src/ConsoleCommands/Amazon/Executor.php
 
 ### v0.202 (2015/07/18)
 - fixed bug with deleting directories log in ConsoleCommands/Amazon/Executor.php
+
+### v0.203 (2015/07/18)
+- fixed a bug with the lack of field make in var/amazon/compatibility-charts/{projectName}/compatibility-charts.csv

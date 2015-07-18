@@ -5,7 +5,7 @@ imports:
 
 parameters:
     app.name: Parser
-    app.version: 0.202
+    app.version: 0.203
     
     app.memory_limit: 256M
         
