@@ -18,7 +18,8 @@ parameters:
     
     amazon.executor.poolSize: 5
     amazon.executor.iterationTimOut: 1
-    
+    amazon.memory_limit: 1048M
+
 services:
     amazon.client.arrayCookieJar:
         class: Guzzle\Plugin\Cookie\CookieJar\ArrayCookieJar

@@ -48,7 +48,22 @@ class CompatibilityChartCollector extends AbstractAmazon
      * @var string
      */
     private $compatibilityChartsPath;
-
+    
+    /**
+     * @var array
+     */
+    private static $csvHeaders = [
+        'year',
+        'make',
+        'model',
+        'notes',
+        'brand',
+        'manufacturerPartNumber',
+        'trim',
+        'engine',
+        'other'
+    ];
+    
     /**
      * @throws \InvalidArgumentException
      */
@@ -115,48 +130,52 @@ class CompatibilityChartCollector extends AbstractAmazon
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $this->progressBar->start();
+        if ($this->progressBar->getMaxSteps()) {
+            $this->writeCSVHeaders();
+            
+            $this->progressBar->start();
 
-        try {
-            $this->progressBar->setProgress($this->csvLineNumber);
-        } catch (\LogicException $e) {
-            /*NOP*/
-        }
-
-        $chartsInfoHandle = $this->openResource($this->compatibilityChartsInfoFilePath, 'rb');
-
-        $columnNames = [
-            'brand',
-            'manufacturerPartNumber',
-            'urlChartInfo'
-        ];
-        
-        $csvRowNumber = 0;
-        $chartsInfo = [];
-        $productUrlsChunkSize = 100;
-        
-        while (false !== ($row = (CSV::readRow($chartsInfoHandle, $columnNames)))) {
-            if ($csvRowNumber >= $this->csvLineNumber) {
-                $chartsInfo[$row['urlChartInfo']] = $row;
-                
-                if (count($chartsInfo) === $productUrlsChunkSize) {
-                    $compatibilityCharts = $this->getCompatibilityCharts($chartsInfo);
-                    $this->writeCompatibilityCharts($compatibilityCharts);
-                    $chartsInfo = [];
-                }
+            try {
+                $this->progressBar->setProgress($this->csvLineNumber);
+            } catch (\LogicException $e) {
+                /*NOP*/
             }
-
-            $csvRowNumber++;
+    
+            $chartsInfoHandle = $this->openResource($this->compatibilityChartsInfoFilePath, 'rb');
+    
+            $columnNames = [
+                'brand',
+                'manufacturerPartNumber',
+                'urlChartInfo'
+            ];
+            
+            $csvRowNumber = 0;
+            $chartsInfo = [];
+            $productUrlsChunkSize = 100;
+            
+            while (false !== ($row = (CSV::readRow($chartsInfoHandle, $columnNames)))) {
+                if ($csvRowNumber >= $this->csvLineNumber) {
+                    $chartsInfo[$row['urlChartInfo']] = $row;
+                    
+                    if (count($chartsInfo) === $productUrlsChunkSize) {
+                        $compatibilityCharts = $this->getCompatibilityCharts($chartsInfo);
+                        $this->writeCompatibilityCharts($compatibilityCharts);
+                        $chartsInfo = [];
+                    }
+                }
+    
+                $csvRowNumber++;
+            }
+            
+            if (count($chartsInfo) > 0) {
+                $compatibilityCharts = $this->getCompatibilityCharts($chartsInfo);
+                $this->writeCompatibilityCharts($compatibilityCharts);
+            }
+            
+            $this->progressBar->finish();
+            
+            $this->closeResource($chartsInfoHandle, $this->compatibilityChartsInfoFilePath);
         }
-        
-        if (count($chartsInfo) > 0) {
-            $compatibilityCharts = $this->getCompatibilityCharts($chartsInfo);
-            $this->writeCompatibilityCharts($compatibilityCharts);
-        }
-        
-        $this->progressBar->finish();
-        
-        $this->closeResource($chartsInfoHandle, $this->compatibilityChartsInfoFilePath);
     }
 
     /**
@@ -215,7 +234,7 @@ class CompatibilityChartCollector extends AbstractAmazon
                     $manufacturerPartNumber = $chartsInfoIndexByUrl[$url]['manufacturerPartNumber'];
                     
                     foreach ($compatibilityChart as $row) {
-                        $compatibilityChart = [
+                        $chart = [
                             'make'                   => '',
                             'model'                  => '',
                             'year'                   => '',
@@ -224,14 +243,26 @@ class CompatibilityChartCollector extends AbstractAmazon
                             'notes'                  => '',
                         ];
                         
+                        $other = [];
+                        
                         foreach ($row as $columnName => $value) {
-                            $compatibilityChart[$columnName] = $value;
+                            if (isset($chart[$columnName])) {
+                                $chart[$columnName] = $value;
+                            } else {
+                                $other[] = implode('[=]', [$columnName, $value]);
+                            }
+                        }
+
+                        $chart['other'] = '';
+
+                        if (false === empty($other)) {
+                            $chart['other'] = implode('[|]', $other);
                         }
                         
-                        $compatibilityChart['brand'] = $brand;
-                        $compatibilityChart['manufacturerPartNumber'] = $manufacturerPartNumber;
-                        
-                        $compatibilityCharts[] = $compatibilityChart;
+                        $chart['brand'] = $brand;
+                        $chart['manufacturerPartNumber'] = $manufacturerPartNumber;
+
+                        $compatibilityCharts[] = $chart;
                     }
                 } catch (\Exception $e) {
                     $this->logger->addError(
@@ -267,14 +298,15 @@ class CompatibilityChartCollector extends AbstractAmazon
             
             foreach ($compatibilityCharts as $compatibilityChart) {
                 $fields = [
+                    'year'                   => $compatibilityChart['year'],
                     'make'                   => $compatibilityChart['make'],
                     'model'                  => $compatibilityChart['model'],
-                    'year'                   => $compatibilityChart['year'],
-                    'trim'                   => $compatibilityChart['trim'],
-                    'engine'                 => $compatibilityChart['engine'],
                     'notes'                  => $compatibilityChart['notes'],
                     'brand'                  => $compatibilityChart['brand'],
-                    'manufacturerPartNumber' => $compatibilityChart['manufacturerPartNumber']
+                    'manufacturerPartNumber' => $compatibilityChart['manufacturerPartNumber'],
+                    'trim'                   => $compatibilityChart['trim'],
+                    'engine'                 => $compatibilityChart['engine'],
+                    'other'                  => $compatibilityChart['other'],
                 ];
                 
                 $isWrite = CSV::writeRow($handle, $fields);
@@ -286,5 +318,22 @@ class CompatibilityChartCollector extends AbstractAmazon
             
             $this->closeResource($handle, $this->compatibilityChartsPath);
         }
+    }
+
+    /**
+     * @throws ApplicationException
+     */
+    private function writeCSVHeaders()
+    {
+        $handle = $this->openResource($this->compatibilityChartsPath, 'w+b');
+
+        $isWrite = CSV::writeRow($handle, self::$csvHeaders);
+
+        if (false === $isWrite) {
+            $this->logger->addError('Unable to write compatibility chart headers!', self::$csvHeaders);
+            throw new ApplicationException();
+        }
+
+        $this->closeResource($handle, $this->compatibilityChartsPath);
     }
 }

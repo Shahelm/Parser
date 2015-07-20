@@ -22,3 +22,6 @@ in src/ConsoleCommands/Amazon/Executor.php
 
 ### v0.203 (2015/07/18)
 - fixed a bug with the lack of field make in var/amazon/compatibility-charts/{projectName}/compatibility-charts.csv
+
+### v0.203 (2015/07/20)
+- new format for var/amazon/compatibility-charts/{projectName}/compatibility-charts.csv

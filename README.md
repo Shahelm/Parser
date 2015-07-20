@@ -31,7 +31,16 @@ The result will be located in the following folder:
 
 *product-info.csv*: asin, productName, brand, manufacturer part number, product description, features
 
-*compatibility-charts.csv*: model, year, trim, engine, notes, brand, manufacturerPartNumber
+*compatibility-charts.csv*: 
+- year
+- make
+- model
+- notes
+- brand
+- manufacturerPartNumber
+- trim
+- engine
+- other (format: columnName[=]columnValue[|]columnName[=]columnValue[|]...)
 
 ###Features
 To work with the proxy, you must add proxy to the file: ROOT_PATH/configs/proxies.yml in a specified format.
