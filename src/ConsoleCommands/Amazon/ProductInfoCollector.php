@@ -325,7 +325,7 @@ class ProductInfoCollector extends AbstractAmazon
     {
         $productName = '';
 
-        $crawler = $this->newInstanceCrawler($bodyAsString);
+        $crawler = $this->newInstanceCrawler();
         $crawler->addContent($bodyAsString);
 
         $selector = 'span#productTitle';
