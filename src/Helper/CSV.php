@@ -26,7 +26,7 @@ class CSV
      */
     public static function writeRow($handle, array $fields)
     {
-        $isWrite = fputcsv($handle, $fields, self::CSV_SEPARATOR, self::CSV_ENCLOSURE, self::CSV_ESCAPE_CHAR);
+        $isWrite = fputcsv($handle, $fields, self::CSV_SEPARATOR, self::CSV_ENCLOSURE);
         
         return false === $isWrite ? false : true;
     }

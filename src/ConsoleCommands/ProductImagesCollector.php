@@ -122,7 +122,7 @@ class ProductImagesCollector extends Command
                 null,
                 InputOption::VALUE_OPTIONAL,
                 'Position in the csv file that you want to start downloading the images.',
-                0
+                1 // exclude csv headers
             )
         ;
     }

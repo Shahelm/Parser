@@ -185,7 +185,19 @@ class ProductInfoCollector extends AbstractAmazon
         } catch (\LogicException $e) {
             /*NOP*/
         }
+        
+        ProductInfoWriter::writCSVHeaders(
+            $this->productInfoFilePath,
+            ProductInfoWriter::getProductInfoHeaders(),
+            $this->logger
+        );
 
+        ProductInfoWriter::writCSVHeaders(
+            $this->productImageInfoFilePath,
+            ImageWriter::getImagesHeaders(),
+            $this->logger
+        );
+        
         $csvHandle = $this->openResource($this->pathToProductUrls, 'rb');
         $columnNames = ['url'];
         $csvRowNumber = 0;

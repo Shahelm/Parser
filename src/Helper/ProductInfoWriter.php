@@ -8,6 +8,7 @@
 namespace Helper;
 
 use Entities\ProductInfo;
+use Exceptions\ApplicationException;
 use Monolog\Logger;
 
 /**
@@ -17,6 +18,49 @@ use Monolog\Logger;
  */
 class ProductInfoWriter
 {
+    /**
+     * @return array
+     */
+    public static function getProductInfoHeaders()
+    {
+        return [
+            'asin',
+            'productName',
+            'brand',
+            'manufacturerPartNumber',
+            'productDescription',
+            'features',
+        ];
+    }
+
+    /**
+     * @param string $path
+     * @param array  $headers
+     * @param Logger $logger
+     *
+     * @throws ApplicationException
+     */
+    public static function writCSVHeaders($path, array $headers, $logger)
+    {
+        $mode = 'w+b';
+        $handle = fopen($path, $mode);
+        
+        if (false === $handle) {
+            $logger->addAlert('Failed create a file handle.', ['file' => $path, 'mode' => $mode]);
+            exit(1);
+        }
+        
+        $isWrite = CSV::writeRow($handle, $headers);
+
+        if (false === $isWrite) {
+            $logger->addError('Unable to write headers!', $headers);
+            fclose($handle);
+            throw new ApplicationException();
+        }
+
+        fclose($handle);
+    }
+
     /**
      * @param resource $handle
      * @param ProductInfo $productInfo

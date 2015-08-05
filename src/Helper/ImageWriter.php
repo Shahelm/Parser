@@ -13,6 +13,20 @@ use Monolog\Logger;
 class ImageWriter
 {
     /**
+     * @return array
+     */
+    public static function getImagesHeaders()
+    {
+        return [
+            'sku',
+            'src',
+            'order',
+            'is-representative',
+            'product-url',
+        ];
+    }
+    
+    /**
      * @param resource $handle
      * @param Image[] $images
      * @param Logger $logger
