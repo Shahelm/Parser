@@ -10,7 +10,9 @@ namespace ConsoleCommands\Amazon;
 use ConsoleCommands\AbstractExecutor;
 use ConsoleCommands\RecursiveDirectoryClearing;
 use Exceptions\ApplicationException;
+use Helper\Container;
 use Helper\CSV;
+use Helper\Path;
 use Helper\Resource;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -46,7 +48,7 @@ class Executor extends AbstractExecutor
      */
     private function cleatState(OutputInterface $output)
     {
-        $parserFolder = \Helper\Path\var_path() . DIRECTORY_SEPARATOR . $this->getParserName();
+        $parserFolder = Path\var_path() . DIRECTORY_SEPARATOR . $this->getParserName();
         
         $tmpDirs = [
             $parserFolder . DIRECTORY_SEPARATOR . 'images',
@@ -130,7 +132,7 @@ class Executor extends AbstractExecutor
     private function getCommandCreator($commandName)
     {
         return function ($project) use ($commandName) {
-            $binFile = \Helper\Path\bin_path();
+            $binFile = Path\bin_path();
             $fullCommandName = $this->getParserName() . $commandName;
             
             if (ProductUrlCollector::COMMAND_NAME === $commandName) {
@@ -145,6 +147,11 @@ class Executor extends AbstractExecutor
                     $fullCommandName,
                     $project
                 );
+            }
+
+            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
+            if ($this->getHelper(Container::class)->getContainer()->hasParameter(Container::DEBUG_MODE)) {
+                $command .= ' > ' . Path\log_path(AbstractAmazon::PARSER_NAME) . DIRECTORY_SEPARATOR . 'output.log';
             }
 
             return $command;

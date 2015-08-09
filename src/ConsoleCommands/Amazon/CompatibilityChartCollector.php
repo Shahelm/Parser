@@ -200,9 +200,12 @@ class CompatibilityChartCollector extends AbstractAmazon
 
         (new ExecutorParallelQuery($this->client, $request, 3))
             ->onSuccess(function (Request $request) use (&$compatibilityCharts, $chartsInfoIndexByUrl) {
+                /**
+                 * @var string $url
+                 */
                 $url = $request->getUrl();
                 $response = $request->getResponse();
-                
+
                 try {
                     $bodyAsString = $response->getBody(true);
                     
@@ -214,8 +217,8 @@ class CompatibilityChartCollector extends AbstractAmazon
                     $tableHeaders = $tableCrawler->filter('tr')->eq(0)->filter('th')->each(function (Crawler $node) {
                         return trim(strtolower($node->text()));
                     });
-
-                    $compatibilityChart = $tableCrawler->filter('tr')
+                    
+                    $compatibilityChart = $tableCrawler->filter('tr.fitment')
                         ->reduce(function (Crawler $node, $index) {
                             /**
                              * skip table header
@@ -226,13 +229,13 @@ class CompatibilityChartCollector extends AbstractAmazon
                             $row = $node->filter('td')->each(function (Crawler $node) use ($tableHeaders) {
                                 return trim($node->text());
                             });
-                            
+
                             return array_combine($tableHeaders, $row);
                         });
                     
                     $brand = $chartsInfoIndexByUrl[$url]['brand'];
                     $manufacturerPartNumber = $chartsInfoIndexByUrl[$url]['manufacturerPartNumber'];
-                    
+
                     foreach ($compatibilityChart as $row) {
                         $chart = [
                             'make'                   => '',

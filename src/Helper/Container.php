@@ -24,7 +24,9 @@ class Container extends Helper
      * @var ContainerInterface
      */
     private $container;
-
+    
+    const DEBUG_MODE = 'debug.mode';
+    
     public function __construct()
     {
         $container = new ContainerBuilder();

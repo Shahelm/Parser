@@ -21,7 +21,8 @@ parameters:
 
     logger.error.handler.name: application-error.log
     logger.debug.handler.name: application-debug.log
-
+    
+    debug.mode: 1
 services:
     app:
         class: Symfony\Component\Console\Application
