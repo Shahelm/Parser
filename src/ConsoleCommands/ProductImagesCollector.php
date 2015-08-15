@@ -279,7 +279,7 @@ class ProductImagesCollector extends Command
             $this->fs->dumpFile($filePath, $imageContent);
         } catch (IOException $e) {
             $this->logger->addAlert(
-                'Unable to save image!',
+                sprintf('Unable to save image! Error: %s', $e->getMessage()),
                 [
                     'url'         => $image->getPath(),
                     'product-url' => $image->getProductUrl()
